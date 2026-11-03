@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Minus, MousePointer2, Pentagon, Trash2, X } from 'lucide-react'
 import { api } from './api'
+import { ConfirmDialog } from './components'
 import type { Camera, Line, Pt, Zone } from './types'
 
 const COLORS = ['#3dd6c6', '#ffb020', '#ff5ac8', '#5a78ff', '#e6e650', '#ff5d5d']
@@ -21,6 +22,8 @@ export function ZoneEditor({ cam, readOnly, onClose, onError }: { cam: Camera; r
   const [dims, setDims] = useState({ w: 960, h: 540 })
   const [saving, setSaving] = useState(false)
   const [dirty, setDirty] = useState(false)
+  const [askDiscard, setAskDiscard] = useState(false)
+  const requestClose = () => { if (dirty) setAskDiscard(true); else onClose() }
   const svgRef = useRef<SVGSVGElement>(null)
   const drag = useRef<{ kind: 'zone' | 'line'; id: string; idx: number } | null>(null)
   const { w, h } = dims
@@ -116,11 +119,11 @@ export function ZoneEditor({ cam, readOnly, onClose, onError }: { cam: Camera; r
   }
 
   return (
-    <div className="overlay" onClick={() => { if (!dirty || confirm('Discard unsaved changes?')) onClose() }}>
+    <div className="overlay" onClick={requestClose}>
       <div className="expanded zone-editor" onClick={(e) => e.stopPropagation()}>
         <header>
           <h2>Zones &amp; lines · {cam.name}</h2>
-          <button className="icon" onClick={onClose}><X size={18} /></button>
+          <button className="icon" onClick={requestClose}><X size={18} /></button>
         </header>
         <div className="expanded-main">
           <div>
@@ -238,6 +241,11 @@ export function ZoneEditor({ cam, readOnly, onClose, onError }: { cam: Camera; r
           </aside>
         </div>
       </div>
+      {askDiscard && (
+        <ConfirmDialog title="Discard unsaved changes?" danger confirmLabel="Discard"
+          message="Zones and lines you drew or moved since the last save will be lost."
+          onCancel={() => setAskDiscard(false)} onConfirm={() => { setAskDiscard(false); onClose() }} />
+      )}
     </div>
   )
 }

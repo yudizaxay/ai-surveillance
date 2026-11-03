@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Bell, BellOff, Check, CheckCheck, Clapperboard, Lock, ShieldAlert, X } from 'lucide-react'
 import { api } from './api'
 import type { AuthState, Camera, DetEvent, EvalResult } from './types'
@@ -25,7 +25,11 @@ export const alertLabel = (t: string) => TYPE_LABEL[t] ?? t
 
 /* ----------------------------------------------------------- alert toast */
 export function AlertToast({ ev, onClose }: { ev: DetEvent; onClose: () => void }) {
-  useEffect(() => { const t = setTimeout(onClose, 8000); return () => clearTimeout(t) }, [ev.id, onClose])
+  // keep the latest onClose in a ref: the parent re-renders every second (live stats) and passes a new
+  // function each time, which used to restart the timer so the toast never closed.
+  const close = useRef(onClose)
+  close.current = onClose
+  useEffect(() => { const t = setTimeout(() => close.current(), 6000); return () => clearTimeout(t) }, [ev.id])
   return (
     <a className="alert-toast" href="#/alerts" onClick={onClose}>
       <ShieldAlert size={20} />

@@ -17,7 +17,10 @@ export function useLive(enabled: boolean, onAuthLost: () => void) {
   const retry = useRef(0)
 
   useEffect(() => {
-    if (enabled) api.events(60).then(setEvents).catch(() => {})
+    if (enabled) api.events(60).then((rows) => setEvents((live) => {
+      const seen = new Set(live.map((e) => e.id))   // events pushed over the WebSocket before this fetch returned
+      return [...live, ...rows.filter((e) => !seen.has(e.id))].sort((a, b) => b.id - a.id).slice(0, 80)
+    })).catch(() => {})
   }, [enabled])
 
   useEffect(() => {
@@ -38,7 +41,7 @@ export function useLive(enabled: boolean, onAuthLost: () => void) {
           setLoaded(true)
           if (typeof msg.alerts_unacked === 'number') setAlertsUnacked(msg.alerts_unacked)
         } else if (msg.type === 'event') {
-          setEvents((prev) => [msg.event, ...prev].slice(0, 80))
+          setEvents((prev) => (prev.some((e) => e.id === msg.event.id) ? prev : [msg.event, ...prev]).slice(0, 80))
         }
       }
       ws.onclose = (ev) => {

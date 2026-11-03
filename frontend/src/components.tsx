@@ -75,11 +75,35 @@ function AtmospherePanel({ cam }: { cam: Camera }) {
   )
 }
 
+/** Themed replacement for window.confirm(), which cannot be styled and blocks the page. */
+export function ConfirmDialog({ title, message, confirmLabel = 'Confirm', danger = false, onConfirm, onCancel }: {
+  title: string; message: string; confirmLabel?: string; danger?: boolean; onConfirm: () => void; onCancel: () => void
+}) {
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel() }
+    window.addEventListener('keydown', k)
+    return () => window.removeEventListener('keydown', k)
+  }, [onCancel])
+  return (
+    <div className="overlay confirm-overlay" onClick={(e) => { e.stopPropagation(); onCancel() }} role="presentation">
+      <div className="confirm" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" onClick={(e) => e.stopPropagation()}>
+        <h3 id="confirm-title">{title}</h3>
+        <p>{message}</p>
+        <div className="confirm-actions">
+          <button className="ghost" onClick={onCancel} autoFocus>Cancel</button>
+          <button className={danger ? 'danger-btn' : 'primary'} onClick={onConfirm}>{confirmLabel}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /* ------------------------------------------------------------------ tile */
 export function CameraTile({
   cam, onExpand, onError, readOnly = false,
 }: { cam: Camera; onExpand: () => void; onError: (m: string) => void; readOnly?: boolean }) {
   const [nonce, setNonce] = useState(0)
+  const [confirmRemove, setConfirmRemove] = useState(false)
   const prev = useRef(cam.status)
   useEffect(() => {
     if (prev.current !== 'live' && cam.status === 'live') setNonce((n) => n + 1) // re-open the MJPEG stream
@@ -120,7 +144,7 @@ export function CameraTile({
               : <button className="icon" title="Start" onClick={() => run(api.start(cam.id))}><Play size={15} /></button>)}
             {!readOnly && (
               <button className="icon danger" title="Remove camera"
-                onClick={() => { if (confirm(`Remove "${cam.name}"?`)) run(api.remove(cam.id)) }}>
+                onClick={() => setConfirmRemove(true)}>
                 <Trash2 size={15} />
               </button>
             )}
@@ -164,6 +188,11 @@ export function CameraTile({
           ))}
         </div>
       </div>
+    {confirmRemove && (
+        <ConfirmDialog title={`Remove ${cam.name}?`} danger confirmLabel="Remove camera"
+          message="The camera and its live view are removed. Stored events and alert clips are kept."
+          onCancel={() => setConfirmRemove(false)} onConfirm={() => { setConfirmRemove(false); run(api.remove(cam.id)) }} />
+      )}
     </article>
   )
 }
