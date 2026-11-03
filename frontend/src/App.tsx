@@ -1,80 +1,96 @@
 import { useEffect, useState } from 'react'
-import { Eye, LayoutGrid, Plus, WifiOff } from 'lucide-react'
-import { AboutPanel, AddCameraModal, CameraTile, EventFeed, ExpandedView, TotalsPanel } from './components'
+import { Activity, LayoutDashboard, ListChecks, Plus, Server, WifiOff } from 'lucide-react'
+import { AddCameraModal, ExpandedView } from './components'
+import { AnalyticsPage, EventsPage, LivePage, SystemPage } from './pages'
 import { useLive } from './useLive'
 
-const sumOf = (c: Record<string, number>, keys: string[]) => keys.reduce((a, k) => a + (c[k] ?? 0), 0)
+type View = 'live' | 'analytics' | 'events' | 'system'
+const NAV: { id: View; label: string; icon: React.ReactNode }[] = [
+  { id: 'live', label: 'Live monitor', icon: <LayoutDashboard size={18} /> },
+  { id: 'analytics', label: 'Analytics', icon: <Activity size={18} /> },
+  { id: 'events', label: 'Events', icon: <ListChecks size={18} /> },
+  { id: 'system', label: 'System', icon: <Server size={18} /> },
+]
 const VEHICLES = ['car', 'truck', 'bus', 'motorcycle', 'bicycle']
+const sumOf = (c: Record<string, number>, keys: string[]) => keys.reduce((a, k) => a + (c[k] ?? 0), 0)
+
+const readView = (): View => {
+  const h = location.hash.replace('#/', '') as View
+  return NAV.some((n) => n.id === h) ? h : 'live'
+}
 
 export default function App() {
   const { cameras, summary, events, connected, loaded } = useLive()
+  const [view, setView] = useState<View>(readView)
   const [cols, setCols] = useState<number>(() => Number(localStorage.getItem('cols')) || 0) // 0 = auto
   const [adding, setAdding] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
+  const [now, setNow] = useState(new Date())
 
   useEffect(() => { localStorage.setItem('cols', String(cols)) }, [cols])
+  useEffect(() => {
+    const on = () => setView(readView())
+    window.addEventListener('hashchange', on)
+    const t = setInterval(() => setNow(new Date()), 1000)
+    return () => { window.removeEventListener('hashchange', on); clearInterval(t) }
+  }, [])
   useEffect(() => {
     if (!toast) return
     const t = setTimeout(() => setToast(null), 5000)
     return () => clearTimeout(t)
   }, [toast])
 
+  const go = (v: View) => { location.hash = `#/${v}` }
   const expanded = cameras.find((c) => c.id === expandedId)
-  const auto = cameras.length <= 1 ? 1 : cameras.length <= 4 ? 2 : 3
-  const grid = cols || auto
+  const title = NAV.find((n) => n.id === view)!.label
 
   return (
-    <div className="app">
-      <header className="topbar">
-        <div className="brand"><Eye size={20} /><div><h1>Vision Monitor</h1><span>AI video analytics · proof of concept</span></div></div>
-        <div className="kpis">
-          <div className="kpi"><span>Cameras live</span><b>{summary.live}<small>/{summary.cameras}</small></b></div>
-          <div className="kpi"><span>People now</span><b>{summary.current.person ?? 0}</b></div>
-          <div className="kpi"><span>Unique people</span><b>{summary.unique.person ?? 0}</b></div>
-          <div className="kpi"><span>Vehicles now</span><b>{sumOf(summary.current, VEHICLES)}</b></div>
-          <div className="kpi"><span>Avg FPS</span><b>{summary.avg_fps}</b></div>
-          <div className="kpi"><span>Avg latency</span><b>{summary.avg_latency_ms}<small>ms</small></b></div>
+    <div className="shell">
+      <nav className="rail">
+        <a className="rail-brand" href="#/live" title="Vision Monitor">
+          <img src="/logo.svg" alt="Vision Monitor" width={38} height={38} />
+          <div><b>Vision</b><span>Monitor</span></div>
+        </a>
+        <div className="rail-nav">
+          {NAV.map((n) => (
+            <button key={n.id} className={view === n.id ? 'on' : ''} onClick={() => go(n.id)}>
+              {n.icon}<span>{n.label}</span>
+              {n.id === 'events' && events.length > 0 && <em>{events.length > 99 ? '99+' : events.length}</em>}
+            </button>
+          ))}
         </div>
-        <div className={`conn ${connected ? 'ok' : 'bad'}`}>{connected ? <><i />Connected</> : <><WifiOff size={14} />Reconnecting…</>}</div>
-      </header>
+        <div className="rail-foot">
+          <div className={`conn ${connected ? 'ok' : 'bad'}`}>{connected ? <><i />Service connected</> : <><WifiOff size={14} />Reconnecting…</>}</div>
+          <small>AI video analytics · PoC</small>
+        </div>
+      </nav>
 
-      <main className="layout">
-        <section className="stage">
-          <div className="toolbar">
-            <h2>Cameras <span className="count">{cameras.length}</span></h2>
-            <div className="spacer" />
-            <div className="seg" title="Grid columns">
-              <LayoutGrid size={14} />
-              {[0, 1, 2, 3, 4].map((n) => (
-                <button key={n} className={cols === n ? 'on' : ''} onClick={() => setCols(n)}>{n === 0 ? 'Auto' : n}</button>
-              ))}
-            </div>
-            <button className="primary" onClick={() => setAdding(true)}><Plus size={16} />Add camera</button>
+      <div className="content">
+        <header className="topbar">
+          <h1>{title}</h1>
+          <div className="kpis">
+            <div className="kpi"><span>Cameras live</span><b>{summary.live}<small>/{summary.cameras}</small></b></div>
+            <div className="kpi"><span>People now</span><b>{summary.current.person ?? 0}</b></div>
+            <div className="kpi"><span>Unique people</span><b>{summary.unique.person ?? 0}</b></div>
+            <div className="kpi"><span>Vehicles now</span><b>{sumOf(summary.current, VEHICLES)}</b></div>
+            <div className="kpi"><span>Avg FPS</span><b>{summary.avg_fps}</b></div>
+            <div className="kpi"><span>Latency</span><b>{summary.avg_latency_ms}<small>ms</small></b></div>
           </div>
+          <div className="clock"><b>{now.toLocaleTimeString()}</b><span>{now.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })}</span></div>
+          <button className="primary" onClick={() => setAdding(true)}><Plus size={16} />Add camera</button>
+        </header>
 
-          {!loaded && <div className="empty"><div className="spinner" />Connecting to analytics service…</div>}
-          {loaded && cameras.length === 0 && (
-            <div className="empty">
-              <Eye size={34} />
-              <h3>No cameras connected</h3>
-              <p>Add a webcam, sample video, uploaded clip or RTSP stream to start live detection.</p>
-              <button className="primary" onClick={() => setAdding(true)}><Plus size={16} />Add your first camera</button>
-            </div>
+        <main className="view">
+          {view === 'live' && (
+            <LivePage cameras={cameras} summary={summary} events={events} loaded={loaded} cols={cols} setCols={setCols}
+              onAdd={() => setAdding(true)} onExpand={setExpandedId} onError={setToast} />
           )}
-          <div className="grid" style={{ gridTemplateColumns: `repeat(${grid}, minmax(0, 1fr))` }}>
-            {cameras.map((c) => (
-              <CameraTile key={c.id} cam={c} onExpand={() => setExpandedId(c.id)} onError={setToast} />
-            ))}
-          </div>
-        </section>
-
-        <aside className="side">
-          <TotalsPanel s={summary} />
-          <EventFeed events={events} />
-          <AboutPanel />
-        </aside>
-      </main>
+          {view === 'analytics' && <AnalyticsPage cameras={cameras} summary={summary} />}
+          {view === 'events' && <EventsPage events={events} cameras={cameras} />}
+          {view === 'system' && <SystemPage cameras={cameras} />}
+        </main>
+      </div>
 
       {adding && <AddCameraModal onClose={() => setAdding(false)} onAdded={() => {}} onError={setToast} />}
       {expanded && <ExpandedView cam={expanded} onClose={() => setExpandedId(null)} onError={setToast} />}

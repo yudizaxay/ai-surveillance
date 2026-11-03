@@ -1,4 +1,4 @@
-import type { Camera, DetEvent, Sample } from './types'
+import type { Camera, DetEvent, HealthInfo, HistoryPoint, Sample } from './types'
 
 async function j<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -35,5 +35,7 @@ export const api = {
   discover: () => fetch('/api/discover').then(j<{ index: number; in_use: boolean }[]>),
   samples: () => fetch('/api/samples').then(j<Sample[]>),
   events: (limit = 60) => fetch(`/api/events?limit=${limit}`).then(j<DetEvent[]>),
+  history: (minutes = 15) => fetch(`/api/history?minutes=${minutes}`).then(j<HistoryPoint[]>),
+  health: () => fetch('/api/health').then(j<HealthInfo>),
   streamUrl: (id: string) => `/api/cameras/${id}/stream`,
 }

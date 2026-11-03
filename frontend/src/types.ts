@@ -45,3 +45,21 @@ export interface Sample {
   file: string
   name: string
 }
+
+export interface HistoryPoint {
+  ts: number
+  live: number
+  current: Counts
+  unique: Counts
+  fps: number
+  latency_ms: number
+}
+
+export interface HealthInfo {
+  ok: boolean
+  device: string
+  model: string
+  face_model: string | null
+  tracker: string
+  uptime: number
+}

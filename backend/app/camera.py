@@ -301,7 +301,3 @@ class CameraWorker(threading.Thread):
                 cv2.circle(frame, (lx, ly), 2, (0, 200, 255), -1)
             cv2.putText(frame, f"face {f['conf']:.2f}", (x1, max(12, y1 - 4)),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.4, col, 1, cv2.LINE_AA)
-        # HUD
-        hud = f"{self.name_}  {self.fps:.1f} FPS  {self.latency_ms:.0f} ms"
-        cv2.putText(frame, hud, (8, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 0), 3, cv2.LINE_AA)
-        cv2.putText(frame, hud, (8, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1, cv2.LINE_AA)

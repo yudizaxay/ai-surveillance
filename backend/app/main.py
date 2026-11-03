@@ -6,6 +6,7 @@ import csv
 import io
 import re
 import time
+from collections import deque
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
@@ -15,11 +16,12 @@ from pydantic import BaseModel
 
 from . import db
 from .camera import pick_device
-from .config import SAMPLE_DIR, UPLOAD_DIR, YOLO_WEIGHTS
+from .config import FACE_MODEL, SAMPLE_DIR, UPLOAD_DIR, YOLO_WEIGHTS
 from .manager import CameraManager, discover_webcams
 
 manager = CameraManager()
 MAX_UPLOAD_MB = 300
+STARTED_AT = time.time()
 
 
 @asynccontextmanager
@@ -36,15 +38,25 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 
 clients: set[WebSocket] = set()
 
+# Rolling analytics history: one point every 5 s, kept for 1 hour (720 points).
+history: "deque[dict]" = deque(maxlen=720)
+
 
 async def broadcaster() -> None:
     """Push stats once per second and events as they happen."""
     last_stats = 0.0
+    last_hist = 0.0
     while True:
         await asyncio.sleep(0.25)
         msgs = []
         while not manager.events.empty():
             msgs.append({"type": "event", "event": manager.events.get_nowait()})
+        if time.time() - last_hist >= 5.0:
+            last_hist = time.time()
+            sm = manager.summary()
+            if sm["cameras"]:
+                history.append({"ts": last_hist, "live": sm["live"], "current": sm["current"],
+                                "unique": sm["unique"], "fps": sm["avg_fps"], "latency_ms": sm["avg_latency_ms"]})
         if time.time() - last_stats >= 1.0:
             last_stats = time.time()
             msgs.append({"type": "stats", "cameras": manager.snapshot(), "summary": manager.summary()})
@@ -88,7 +100,11 @@ class SettingsPatch(BaseModel):
 # ------------------------------------------------------------------------ REST
 @app.get("/api/health")
 def health():
-    return {"ok": True, "device": pick_device(), "model": YOLO_WEIGHTS.name}
+    return {
+        "ok": True, "device": pick_device(), "model": YOLO_WEIGHTS.name,
+        "face_model": FACE_MODEL.name if FACE_MODEL.exists() else None,
+        "tracker": "ByteTrack", "uptime": round(time.time() - STARTED_AT),
+    }
 
 
 @app.get("/api/cameras")
@@ -201,6 +217,12 @@ def snapshot(cam_id: str):
 @app.get("/api/summary")
 def summary():
     return manager.summary()
+
+
+@app.get("/api/history")
+def get_history(minutes: int = 30):
+    cutoff = time.time() - min(max(minutes, 1), 60) * 60
+    return [h for h in history if h["ts"] >= cutoff]
 
 
 @app.get("/api/events")

@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" width="1200" height="300" role="img" aria-label="Vision Monitor — AI video analytics">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#101a26"/><stop offset="1" stop-color="#070b10"/></linearGradient>
+    <linearGradient id="ac" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5eead4"/><stop offset="1" stop-color="#22b8cf"/></linearGradient>
+    <radialGradient id="lens" cx="0.38" cy="0.35" r="0.8"><stop offset="0" stop-color="#7ff5e4"/><stop offset="0.55" stop-color="#1fb5b0"/><stop offset="1" stop-color="#0b5f6b"/></radialGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#1b2735" stroke-width="1"/></pattern>
+  </defs>
+  <rect width="1200" height="300" rx="22" fill="url(#bg)"/>
+  <rect width="1200" height="300" rx="22" fill="url(#grid)" opacity=".7"/>
+  <rect x="1" y="1" width="1198" height="298" rx="21" fill="none" stroke="#263447" stroke-width="2"/>
+  <g transform="translate(92 62) scale(2.9)">
+    <rect width="64" height="64" rx="15" fill="#0c141d" stroke="#2a3a4d" stroke-width="1.5"/>
+    <g fill="none" stroke="url(#ac)" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M13 22v-6a3 3 0 0 1 3-3h6"/><path d="M42 13h6a3 3 0 0 1 3 3v6"/><path d="M51 42v6a3 3 0 0 1-3 3h-6"/><path d="M22 51h-6a3 3 0 0 1-3-3v-6"/>
+    </g>
+    <circle cx="32" cy="32" r="10.5" fill="url(#lens)"/><circle cx="32" cy="32" r="4.2" fill="#06222a"/><circle cx="28.6" cy="28.4" r="2.1" fill="#fff" fill-opacity=".85"/>
+  </g>
+  <text x="318" y="140" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="68" font-weight="700" fill="#e8edf3" letter-spacing="-1">Vision Monitor</text>
+  <text x="320" y="186" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="22" fill="#8a97a9">Multi-camera AI video analytics · detection · tracking · dashboard</text>
+  <g font-family="'SF Mono', Menlo, Consolas, monospace" font-size="15" fill="#5eead4">
+    <rect x="320" y="212" width="112" height="32" rx="16" fill="#12212b" stroke="#1f4a4d"/><text x="341" y="233">YOLO11</text>
+    <rect x="444" y="212" width="128" height="32" rx="16" fill="#12212b" stroke="#1f4a4d"/><text x="463" y="233">ByteTrack</text>
+    <rect x="584" y="212" width="112" height="32" rx="16" fill="#12212b" stroke="#1f4a4d"/><text x="606" y="233">FastAPI</text>
+    <rect x="708" y="212" width="96" height="32" rx="16" fill="#12212b" stroke="#1f4a4d"/><text x="729" y="233">React</text>
+  </g>
+  <g stroke="#3ddc84" stroke-width="2.5" fill="none" opacity=".9">
+    <rect x="960" y="76" width="84" height="150" rx="3"/><rect x="1062" y="116" width="96" height="110" rx="3" stroke="#ffaa3c"/>
+  </g>
+  <g font-family="'SF Mono', Menlo, monospace" font-size="12" fill="#0b1118">
+    <rect x="960" y="56" width="84" height="20" fill="#3ddc84"/><text x="966" y="70">person #4</text>
+    <rect x="1062" y="96" width="96" height="20" fill="#ffaa3c"/><text x="1068" y="110">car #7 0.88</text>
+  </g>
+</svg>
