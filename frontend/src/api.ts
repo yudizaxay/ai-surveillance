@@ -1,4 +1,4 @@
-import type { AuthState, Camera, DetectorInfo, DetEvent, EvalResult, HealthInfo, HistoryPoint, Sample } from './types'
+import type { AuthState, Camera, DetectorInfo, DetEvent, EvalResult, HealthInfo, HistoryPoint, Sample, Atmosphere, AtmospherePoint } from './types'
 
 async function j<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -51,6 +51,7 @@ export const api = {
   resetHeat: (id: string) => fetch(`/api/cameras/${id}/heatmap/reset`, { method: 'POST' }).then(j<unknown>),
   mediaUrl: (name: string) => `/api/media/${name}`,
   snapshotUrl: (id: string) => `/api/cameras/${id}/snapshot`,
+  atmosphere: (id: string) => fetch(`/api/cameras/${id}/atmosphere`).then(j<{ current: Atmosphere | null; history: AtmospherePoint[] }>),
   heatmapUrl: (id: string) => `/api/cameras/${id}/heatmap`,
   streamUrl: (id: string) => `/api/cameras/${id}/stream`,
 }

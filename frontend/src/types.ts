@@ -10,12 +10,13 @@ export interface Camera {
   latency_ms: number
   resolution: string
   settings: {
-    conf: number; faces: boolean; tracking: boolean; pose: boolean; ppe: boolean
+    conf: number; faces: boolean; tracking: boolean; pose: boolean; ppe: boolean; atmosphere: boolean
     zones: Zone[]; lines: Line[]; model: string
   }
   model: string
   rules: { zones: Record<string, { occupancy: number; entries: number }>; lines: Record<string, { in: number; out: number }> }
   postures: Record<string, number>
+  atmosphere?: Atmosphere | null
   ppe: { helmet_yes: number; helmet_no: number; helmet_unknown: number }
   features: { pose_available: boolean; pose_error: string | null; ppe_available: boolean; ppe_error: string | null }
   current: Counts
@@ -129,3 +130,11 @@ export interface DetectorInfo {
   current: string
   options: { file: string; label: string; hint: string; installed: boolean }[]
 }
+
+export interface Atmosphere {
+  visibility: number | null   // 0-100, higher is clearer; null at night
+  level: 'clear' | 'hazy' | 'foggy' | 'dense' | 'night'
+  kind: 'none' | 'fog' | 'smog'
+  dark: number; contrast: number; edges: number; tint: number
+}
+export interface AtmospherePoint { ts: number; visibility: number | null; level: string; kind: string }

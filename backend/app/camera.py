@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import threading
 import time
-from collections import defaultdict
+from collections import defaultdict, deque
 from typing import Callable
 
 import cv2
@@ -16,6 +16,7 @@ from .config import (
     MODEL_DIR, OBJECT_MIN_CONF, POSE_WEIGHTS, PPE_MODEL, STREAM_MAX_WIDTH, UNCERTAIN_BELOW,
 )
 from .media import ClipRecorder
+from . import atmosphere as atmo_mod
 from .pose import SKELETON, classify_posture, iou
 from .rules import RuleEngine, point_in_polygon
 
@@ -46,7 +47,7 @@ def pick_device() -> str:
 
 
 DEFAULT_SETTINGS = {
-    "conf": 0.25, "faces": True, "tracking": True, "pose": False, "ppe": False, "zones": [], "lines": [],
+    "conf": 0.25, "faces": True, "tracking": True, "pose": False, "ppe": False, "atmosphere": False, "zones": [], "lines": [],
     "model": "",   # "" = use the global detector (System page); otherwise a weights file such as yolo11x.pt
 }
 
@@ -116,6 +117,12 @@ class CameraWorker(threading.Thread):
         self._last_pose: list[dict] = []
         self._last_ppe: list[dict] = []
         self._frame_no = 0
+        self.atmos: dict | None = None
+        self._atmos_hist: deque = deque(maxlen=300)
+        self._atmos_t = 0.0
+        self._atmos_ema: float | None = None
+        self._atmos_state = ("clear", "none")       # confirmed (level, kind)
+        self._atmos_pending: tuple[tuple[str, str], int] = (("clear", "none"), 0)
 
     # ------------------------------------------------------------------ public
     def stop(self) -> None:
@@ -146,11 +153,15 @@ class CameraWorker(threading.Thread):
             "rules": self.engine.snapshot(),
             "postures": dict(self.postures),
             "ppe": dict(self.ppe_counts),
+            "atmosphere": self.atmos if self.settings.get("atmosphere") else None,
             "features": {
                 "pose_available": POSE_WEIGHTS.exists(), "pose_error": self.pose_error,
                 "ppe_available": ppe_mod.available(), "ppe_error": self.ppe_error,
             },
         }
+
+    def atmosphere_history(self) -> list[dict]:
+        return list(self._atmos_hist)
 
     def wait_frame(self, last_seq: int, timeout: float = 5.0) -> tuple[int, bytes | None]:
         with self._frame_cv:
@@ -305,6 +316,7 @@ class CameraWorker(threading.Thread):
                     self._run_ppe(frame, dets, w, h)
                 else:
                     self.ppe_counts, self._last_ppe = dict(NO_PPE), []
+                self._run_atmosphere(frame)
                 lat = (time.time() - t0) * 1000
                 self.latency_ms = 0.8 * self.latency_ms + 0.2 * lat if self.latency_ms else lat
 
@@ -434,6 +446,48 @@ class CameraWorker(threading.Thread):
         for tid in [t for t in self._lying_since if t not in lying_ids]:
             del self._lying_since[tid]
         self.postures = counts
+
+    def _run_atmosphere(self, frame: np.ndarray) -> None:
+        """Fog / haze / smog estimate every ~2 s; alert only after 3 consistent readings (no flicker)."""
+        if not self.settings.get("atmosphere"):
+            self.atmos = None
+            return
+        now = time.time()
+        if now - self._atmos_t < 2.0:
+            return
+        self._atmos_t = now
+        r = atmo_mod.analyze(frame)
+        if r["visibility"] is not None:   # smooth the score; "night" readings are reported but not smoothed
+            self._atmos_ema = r["visibility"] if self._atmos_ema is None else 0.6 * self._atmos_ema + 0.4 * r["visibility"]
+            r["visibility"] = round(self._atmos_ema, 1)
+            r["level"] = atmo_mod.level_for(self._atmos_ema)
+            if r["level"] == "clear":
+                r["kind"] = "none"
+        self.atmos = r
+        self._atmos_hist.append({"ts": now, "visibility": r["visibility"], "level": r["level"], "kind": r["kind"]})
+        if r["level"] == "night":
+            return
+
+        state = (r["level"], r["kind"])
+        if state == self._atmos_pending[0]:
+            self._atmos_pending = (state, self._atmos_pending[1] + 1)
+        else:
+            self._atmos_pending = (state, 1)
+        if self._atmos_pending[1] < 3 or state == self._atmos_state:
+            return
+        prev, self._atmos_state = self._atmos_state, state
+        level, kind = state
+        what = "smog / possible pollution" if kind == "smog" else "fog"
+        if level == "clear":
+            if prev[0] != "clear":
+                self._emit(type="visibility_clear", label="visibility", message=f"{self.name_}: visibility back to clear")
+        elif level in ("foggy", "dense"):
+            self._emit(type="visibility", label="visibility", severity="alert", capture=True,
+                       confidence=round(r["visibility"] / 100, 2),
+                       message=f"{self.name_}: {level} {what}, visibility index {r['visibility']:.0f}/100")
+        else:
+            self._emit(type="visibility", label="visibility", confidence=round(r["visibility"] / 100, 2),
+                       message=f"{self.name_}: hazy {what}, visibility index {r['visibility']:.0f}/100")
 
     def _run_ppe(self, frame: np.ndarray, dets: list[dict], w: int, h: int) -> None:
         """PPE detector runs on even frames; helmet status is associated to each tracked person."""

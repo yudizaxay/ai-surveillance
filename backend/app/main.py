@@ -159,6 +159,7 @@ class SettingsPatch(BaseModel):
     tracking: bool | None = None
     pose: bool | None = None
     ppe: bool | None = None
+    atmosphere: bool | None = None
     model: str | None = None
     name: str | None = None
     zones: list[dict] | None = None
@@ -295,6 +296,15 @@ def snapshot(cam_id: str, raw: bool = False):
     if not jpg:
         raise HTTPException(404, "no frame yet")
     return Response(jpg, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+
+@app.get("/api/cameras/{cam_id}/atmosphere")
+def atmosphere(cam_id: str):
+    try:
+        w = manager.get(cam_id)
+    except KeyError:
+        raise HTTPException(404, "camera not found")
+    return {"current": w.atmos, "history": w.atmosphere_history()}
 
 
 @app.get("/api/cameras/{cam_id}/heatmap")

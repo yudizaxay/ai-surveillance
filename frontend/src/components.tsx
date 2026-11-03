@@ -3,7 +3,7 @@ import {
   Camera as CamIcon, Expand, FileVideo, Flame, Link2, Pencil, Play, Plus, Radar, Square, Trash2, Upload, Video, X,
 } from 'lucide-react'
 import { api } from './api'
-import type { Camera, DetectorInfo, DetEvent, Sample, Summary } from './types'
+import type { AtmospherePoint, Camera, DetectorInfo, DetEvent, Sample, Summary } from './types'
 
 export const CAT_COLORS: Record<string, string> = {
   person: '#50dc64', car: '#ffaa3c', truck: '#3c8cff', bus: '#3cc8ff',
@@ -22,6 +22,57 @@ const fmtUptime = (s: number) =>
 export function StatusBadge({ status }: { status: Camera['status'] }) {
   const label = { live: 'LIVE', starting: 'STARTING', error: 'ERROR', stopped: 'STOPPED' }[status]
   return <span className={`badge badge-${status}`}><i />{label}</span>
+}
+
+/** Live view built from short snapshot requests instead of a long-lived MJPEG connection.
+ *  Browsers allow only ~6 open connections per host, so one persistent stream per camera
+ *  starves every other request (the expanded view, settings, API calls) once 6+ cameras run. */
+export function LiveFrame({ id, alt, fast = false }: { id: string; alt: string; fast?: boolean }) {
+  const [src, setSrc] = useState('')
+  useEffect(() => {
+    let stop = false
+    let timer: number | undefined
+    const next = () => {
+      const im = new Image()
+      im.onload = () => { if (stop) return; setSrc(im.src); timer = window.setTimeout(next, fast ? 80 : 250) }
+      im.onerror = () => { if (!stop) timer = window.setTimeout(next, 1000) }
+      im.src = `${api.snapshotUrl(id)}?t=${Date.now()}`
+    }
+    next()
+    return () => { stop = true; clearTimeout(timer) }
+  }, [id, fast])
+  return src ? <img src={src} alt={alt} /> : <div className="tile-placeholder"><div className="spinner" /></div>
+}
+
+/** Visibility index, level and a short trend for one camera. */
+function AtmospherePanel({ cam }: { cam: Camera }) {
+  const [hist, setHist] = useState<AtmospherePoint[]>([])
+  useEffect(() => {
+    let stop = false
+    const load = () => api.atmosphere(cam.id).then((r) => { if (!stop) setHist(r.history) }).catch(() => {})
+    load()
+    const t = setInterval(load, 5000)
+    return () => { stop = true; clearInterval(t) }
+  }, [cam.id])
+  const a = cam.atmosphere
+  if (!a) return <p className="note">Measuring visibility…</p>
+  const label = a.level === 'night' ? 'Night — not assessed'
+    : a.level === 'clear' ? 'Clear'
+    : `${a.level === 'dense' ? 'Dense ' : a.level === 'foggy' ? '' : 'Light '}${a.kind === 'smog' ? 'smog / possible pollution' : 'fog'}`
+  const pts = hist.filter((p) => p.visibility !== null)
+  const W = 240, H = 44
+  const path = pts.map((p, i) => `${i ? 'L' : 'M'}${(pts.length <= 1 ? 0 : (i / (pts.length - 1)) * W).toFixed(1)},${(H - ((p.visibility as number) / 100) * H).toFixed(1)}`).join(' ')
+  return (
+    <div className={`air-panel ${a.level}`}>
+      <div className="air-head"><b>{a.visibility === null ? '—' : Math.round(a.visibility)}</b><span>/100 visibility</span><em>{label}</em></div>
+      {pts.length > 1 && (
+        <svg viewBox={`0 0 ${W} ${H}`} className="air-spark" role="img" aria-label="Visibility trend">
+          <path d={path} fill="none" stroke="currentColor" strokeWidth="1.6" />
+        </svg>
+      )}
+      <p className="note">Relative index from image contrast, not a distance in metres. It cannot measure PM2.5 / AQI; a warm tint is only a hint of smog or dust.</p>
+    </div>
+  )
 }
 
 /* ------------------------------------------------------------------ tile */
@@ -43,7 +94,7 @@ export function CameraTile({
     <article className={`tile tile-${cam.status}`}>
       <div className="tile-video" onDoubleClick={onExpand}>
         {cam.status === 'live' ? (
-          <img key={nonce} src={`${api.streamUrl(cam.id)}?n=${nonce}`} alt={cam.name} />
+          <LiveFrame key={nonce} id={cam.id} alt={cam.name} />
         ) : (
           <div className="tile-placeholder">
             {cam.status === 'starting' && <><div className="spinner" /><span>Loading model & opening source…</span></>}
@@ -103,6 +154,11 @@ export function CameraTile({
               <i style={{ background: '#3cc8ff', borderRadius: 2, height: 3 }} />{l.name} <b>↓{cam.rules?.lines[l.id]?.in ?? 0}</b> <b>↑{cam.rules?.lines[l.id]?.out ?? 0}</b>
             </span>
           ))}
+          {cam.settings.atmosphere && cam.atmosphere && cam.atmosphere.level !== 'clear' && (
+            <span className={`chip air ${cam.atmosphere.level}`}>
+              {cam.atmosphere.level === 'night' ? 'Night' : `${cam.atmosphere.kind === 'smog' ? 'Smog' : cam.atmosphere.level === 'hazy' ? 'Haze' : 'Fog'} · ${Math.round(cam.atmosphere.visibility ?? 0)}`}
+            </span>
+          )}
           {cam.settings.pose && Object.entries(cam.postures ?? {}).filter(([, n]) => n > 0).map(([p, n]) => (
             <span key={p} className="chip pose">{p} <b>{n}</b></span>
           ))}
@@ -157,7 +213,7 @@ export function ExpandedView({
             {cam.status === 'live'
               ? (heat
                 ? <img key="heat" src={`${api.heatmapUrl(cam.id)}?t=${tick}`} alt={`${cam.name} heatmap`} />
-                : <img key="live" src={api.streamUrl(cam.id)} alt={cam.name} />)
+                : <LiveFrame key="live" id={cam.id} alt={cam.name} fast />)
               : <div className="tile-placeholder big">{cam.error || `Camera ${cam.status}`}</div>}
           </div>
           <div className="view-bar">
@@ -204,6 +260,9 @@ export function ExpandedView({
             <label className="toggle" title={cam.features.ppe_available ? '' : 'Add a custom-trained model at backend/models/ppe.pt'}>
               <input type="checkbox" checked={st.ppe} disabled={readOnly || !cam.features.ppe_available}
                 onChange={(e) => patch({ ppe: e.target.checked })} /> Helmet / PPE{!cam.features.ppe_available && <em className="muted"> · needs model</em>}</label>
+            <label className="toggle" title="Estimates fog, haze and smog from image contrast. Best for outdoor cameras with a view into the distance.">
+              <input type="checkbox" checked={st.atmosphere ?? false} disabled={readOnly}
+                onChange={(e) => patch({ atmosphere: e.target.checked })} /> Weather &amp; visibility (fog / haze / smog)</label>
             {cam.features.pose_error && <p className="note err">{cam.features.pose_error}</p>}
             {cam.features.ppe_error && st.ppe && <p className="note err">{cam.features.ppe_error}</p>}
             {st.pose && (
@@ -212,6 +271,7 @@ export function ExpandedView({
             {st.ppe && cam.features.ppe_available && (
               <p className="note">Helmet: {cam.ppe?.helmet_yes ?? 0} yes · {cam.ppe?.helmet_no ?? 0} no · {cam.ppe?.helmet_unknown ?? 0} unknown (not enough evidence)</p>
             )}
+            {st.atmosphere && <AtmospherePanel cam={cam} />}
             <h4>Zones &amp; lines</h4>
             <button className="ghost" onClick={onEditZones}><Pencil size={14} />{readOnly ? 'View' : 'Edit'} zones &amp; lines ({(cam.settings.zones?.length ?? 0) + (cam.settings.lines?.length ?? 0)})</button>
             {(cam.settings.zones ?? []).map((z) => (
@@ -318,7 +378,7 @@ export function AddCameraModal({ onClose, onAdded, onError }: { onClose: () => v
 /* --------------------------------------------------------------- sidebar */
 const EV_ICON: Record<string, string> = {
   new_track: '◆', camera_online: '●', camera_offline: '○', camera_error: '▲', line_cross: '⇅', zone_enter: '▣',
-  zone_exit: '▢', dwell: '◷', capacity: '⚑', fall: '⚠', ppe_violation: '⛑',
+  zone_exit: '▢', dwell: '◷', capacity: '⚑', fall: '⚠', ppe_violation: '⛑', visibility: '≋', visibility_clear: '☀',
 }
 
 export function EventFeed({ events }: { events: DetEvent[] }) {

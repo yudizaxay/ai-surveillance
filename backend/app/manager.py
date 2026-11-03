@@ -123,6 +123,9 @@ class CameraManager:
         if "pose" in patch:
             w.settings["pose"] = bool(patch["pose"])
             w.pose_error = None
+        if "atmosphere" in patch:
+            w.settings["atmosphere"] = bool(patch["atmosphere"])
+            w._atmos_ema, w._atmos_state, w._atmos_t = None, ("clear", "none"), 0.0
         if "ppe" in patch:
             w.settings["ppe"] = bool(patch["ppe"])
             w.ppe_error = None

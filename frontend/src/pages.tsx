@@ -145,7 +145,7 @@ export function AnalyticsPage({ cameras, summary }: { cameras: Camera[]; summary
 const TYPE_LABEL: Record<string, string> = {
   new_track: 'Detection', camera_online: 'Camera online', camera_offline: 'Camera offline', camera_error: 'Camera error',
   zone_enter: 'Zone entry', zone_exit: 'Zone exit', line_cross: 'Line crossed', dwell: 'Dwell time',
-  capacity: 'Over capacity', fall: 'Possible fall', ppe_violation: 'No helmet',
+  capacity: 'Over capacity', fall: 'Possible fall', ppe_violation: 'No helmet', visibility: 'Low visibility', visibility_clear: 'Visibility restored',
 }
 
 export function EventsPage({ events, cameras }: { events: DetEvent[]; cameras: Camera[] }) {

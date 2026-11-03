@@ -19,7 +19,7 @@ export function beep() {
 
 const TYPE_LABEL: Record<string, string> = {
   line_cross: 'Line crossed', zone_enter: 'Zone entry', dwell: 'Dwell time', capacity: 'Over capacity',
-  fall: 'Possible fall', ppe_violation: 'No helmet', camera_error: 'Camera error',
+  fall: 'Possible fall', ppe_violation: 'No helmet', visibility: 'Low visibility', visibility_clear: 'Visibility restored', camera_error: 'Camera error',
 }
 export const alertLabel = (t: string) => TYPE_LABEL[t] ?? t
 

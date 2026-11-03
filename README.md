@@ -41,6 +41,7 @@
 | **Alerts** | Rule-based alerts with a snapshot and a short video clip (before and after), a dashboard banner and sound, acknowledgement, and an optional Slack-compatible webhook. |
 | **Pose and posture** | Skeleton overlay, standing / sitting / bending / lying, and possible-fall alerts that explicitly ask for human review. |
 | **Heatmap** | Where people and vehicles spent time, per camera. |
+| **Weather & visibility** | Optional per-camera fog / haze / smog estimate (0-100 visibility index) with alerts. No model needed. |
 | **Face detection** | Locates faces and landmarks only. **No identity recognition.** |
 | **Helmet / PPE pipeline** | Ready for a custom-trained model. Reports `unknown` rather than guessing. No model is bundled. |
 | **Analytics and events** | Trend charts, per-camera breakdown, searchable event log, CSV export. |
@@ -185,6 +186,16 @@ Cameras share one accelerator and inference is serialised, so FPS per camera fal
 roughly 3–5 FPS per camera with four cameras on a laptop GPU using the Balanced model. Video files are dropped to
 real-time speed rather than played in slow motion. Pose runs on alternate frames.
 
+## Weather and visibility (fog, haze, smog)
+
+Turn on **Weather & visibility** in a camera's detail panel. Every ~2 seconds the frame is analysed with plain image statistics (no neural network): the dark channel (haze lifts the darkest pixels), global contrast and edge strength are combined into a **0-100 visibility index**. The result is shown as a chip on the tile, a gauge with a trend line in the detail view, and an alert after three consistent readings (so a passing cloud does not flicker).
+
+- **Levels:** clear, hazy, foggy, dense. Night frames are reported as "night" and not assessed.
+- **Fog vs smog:** a neutral grey-white veil is labelled fog; a warm yellow/brown veil is labelled smog / possible pollution.
+- **Calibration:** checked against a real foggy camera and against synthetic fog (scattering model) at several densities; the score falls steadily as fog thickens.
+
+What it is not: a distance in metres, and not an air-quality measurement. It cannot read PM2.5 / AQI, and a warm tint is only a hint of smog or dust. Use it on outdoor cameras with a view into the distance. Flat, texture-less scenes (an overhead view of plain asphalt, an empty sky) and indoor cameras give unreliable scores, which is why it is off by default. For real air quality, use a sensor or an air-quality API.
+
 ## Helmet / PPE
 
 No PPE model is bundled, because helmet detection needs a detector trained on labelled PPE data from conditions like
@@ -284,6 +295,7 @@ flowchart LR
 | DELETE | `/api/cameras/{id}` | Remove a camera |
 | GET | `/api/cameras/{id}/stream` | MJPEG stream with overlays |
 | GET | `/api/cameras/{id}/snapshot[?raw=true]` | Latest frame (annotated, or clean for the zone editor) |
+| GET | `/api/cameras/{id}/atmosphere` | Visibility index now + recent history |
 | GET | `/api/cameras/{id}/heatmap` · POST `…/heatmap/reset` | Heatmap image · reset |
 | GET | `/api/discover` · `/api/samples` | Local webcams · sample clips |
 | GET | `/api/summary` · `/api/history?minutes=` | Aggregated stats · trend data |

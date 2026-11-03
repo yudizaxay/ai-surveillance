@@ -324,3 +324,17 @@ em.hot, .count.hot { background: #5a1f24; border-color: #8a2f36; color: #ffb4b4;
 .model-pick button:hover:not(:disabled):not(.on) { border-color: #3a475a; }
 .model-pick code { align-self: flex-start; }
 .model-pick small { color: var(--muted); font-size: 12px; }
+
+/* weather & visibility */
+.chip.air { background: rgba(120,160,200,.18); color: #a9c4e0; }
+.chip.air.foggy { background: rgba(255,176,60,.18); color: #ffb03c; }
+.chip.air.dense { background: rgba(255,92,92,.2); color: #ff6b6b; }
+.chip.air.night { background: rgba(130,130,160,.18); color: #9aa0c0; }
+.air-panel { margin: 6px 0 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255,255,255,.02); color: var(--ok, #3ddc84); }
+.air-panel.hazy { color: #d9d36a; } .air-panel.foggy { color: #ffb03c; } .air-panel.dense { color: #ff6b6b; } .air-panel.night { color: #9aa0c0; }
+.air-head { display: flex; align-items: baseline; gap: 6px; }
+.air-head b { font-size: 26px; line-height: 1; }
+.air-head span { color: var(--muted); font-size: 12px; }
+.air-head em { margin-left: auto; font-style: normal; font-size: 12px; font-weight: 600; text-align: right; }
+.air-spark { width: 100%; height: 44px; margin-top: 8px; display: block; }
+.air-panel .note { color: var(--muted); margin: 8px 0 0; }
