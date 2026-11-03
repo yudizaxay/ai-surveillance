@@ -26,7 +26,7 @@
 
 ## Contents
 
-[Features](#features) · [Screenshots](#screenshots) · [What is pre-trained](#what-is-pre-trained-and-what-is-not) · [Quick start](#quick-start) · [Using the dashboard](#using-the-dashboard) · [Zones, lines and alerts](#zones-lines-and-alerts) · [Models and performance](#models-and-performance) · [Helmet / PPE](#helmet--ppe) · [Evaluation](#evaluation) · [Login and roles](#login-and-roles) · [Docker](#docker) · [Architecture](#architecture) · [API](#api) · [Configuration](#configuration) · [Project layout](#project-layout) · [Known limitations](#known-limitations) · [Privacy](#privacy-and-responsible-use) · [Roadmap](#roadmap)
+[Features](#features) · [Screenshots](#screenshots) · [What is pre-trained](#what-is-pre-trained-and-what-is-not) · [Quick start](#quick-start) · [Using the dashboard](#using-the-dashboard) · [Zones, lines and alerts](#zones-lines-and-alerts) · [Models and performance](#models-and-performance) · [Weather & visibility](#weather-and-visibility-fog-haze-smog) · [Helmet / PPE](#helmet--ppe) · [Evaluation](#evaluation) · [Login and roles](#login-and-roles) · [Docker](#docker) · [Architecture](#architecture) · [API](#api) · [Configuration](#configuration) · [Project layout](#project-layout) · [Known limitations](#known-limitations) · [Privacy](#privacy-and-responsible-use) · [Roadmap](#roadmap)
 
 ## Features
 
@@ -187,6 +187,8 @@ roughly 3–5 FPS per camera with four cameras on a laptop GPU using the Balance
 real-time speed rather than played in slow motion. Pose runs on alternate frames.
 
 ## Weather and visibility (fog, haze, smog)
+
+<p align="center"><img src="docs/assets/weather-visibility.png" alt="Fog detected on a camera with a visibility gauge" width="860"></p>
 
 Turn on **Weather & visibility** in a camera's detail panel. Every ~2 seconds the frame is analysed with plain image statistics (no neural network): the dark channel (haze lifts the darkest pixels), global contrast and edge strength are combined into a **0-100 visibility index**. The result is shown as a chip on the tile, a gauge with a trend line in the detail view, and an alert after three consistent readings (so a passing cloud does not flicker).
 
