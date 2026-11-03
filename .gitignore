@@ -218,3 +218,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Project: runtime data, downloaded models and sample videos
+backend/data/
+backend/models/*
+!backend/models/.gitkeep
+*.db
