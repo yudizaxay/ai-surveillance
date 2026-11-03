@@ -1,8 +1,10 @@
 """Registry of cameras; owns lifecycle, persistence and the event queue."""
 from __future__ import annotations
 
+import json
 import queue
 import threading
+import urllib.request
 import uuid
 from pathlib import Path
 
@@ -11,6 +13,7 @@ import cv2
 from . import db
 from .camera import CameraWorker
 from .config import CATEGORIES, SAMPLE_DIR, UPLOAD_DIR
+from .rules import sanitize_lines, sanitize_zones
 
 
 def resolve_file(source: str) -> str:
@@ -33,7 +36,26 @@ class CameraManager:
     # ------------------------------------------------------------------ events
     def _on_event(self, ev: dict) -> None:
         ev["id"] = db.add_event(ev)
+        ev.setdefault("severity", "info")
         self.events.put(ev)
+        if ev["severity"] == "alert":
+            url = db.get_kv("webhook_url")
+            if url:
+                threading.Thread(target=self._post_webhook, args=(url, ev), daemon=True).start()
+
+    @staticmethod
+    def _post_webhook(url: str, ev: dict) -> None:
+        """Generic JSON webhook. The `text` field makes it work as-is with Slack / Discord-compatible endpoints."""
+        try:
+            body = json.dumps({
+                "text": f"[{ev['camera_name']}] {ev.get('message', ev['type'])}",
+                "event": {k: ev.get(k) for k in ("id", "ts", "camera_id", "camera_name", "type", "label",
+                                                 "track_id", "zone", "message", "severity", "image", "clip")},
+            }).encode()
+            req = urllib.request.Request(url, data=body, headers={"content-type": "application/json"}, method="POST")
+            urllib.request.urlopen(req, timeout=5).read()
+        except Exception as e:  # noqa: BLE001
+            print(f"[webhook] delivery failed: {e}")
 
     # --------------------------------------------------------------- lifecycle
     def restore(self) -> None:
@@ -92,10 +114,40 @@ class CameraManager:
             w.settings["faces"] = bool(patch["faces"])
         if "tracking" in patch:
             w.settings["tracking"] = bool(patch["tracking"])
+        if "model" in patch:
+            from . import detector
+            m = str(patch["model"])
+            if m and m not in {o["file"] for o in detector.options() if o["installed"]}:
+                raise ValueError("Model not installed")
+            w.settings["model"] = m
+        if "pose" in patch:
+            w.settings["pose"] = bool(patch["pose"])
+            w.pose_error = None
+        if "ppe" in patch:
+            w.settings["ppe"] = bool(patch["ppe"])
+            w.ppe_error = None
+        if "zones" in patch or "lines" in patch:
+            if "zones" in patch:
+                w.settings["zones"] = sanitize_zones(patch["zones"])
+            if "lines" in patch:
+                w.settings["lines"] = sanitize_lines(patch["lines"])
+            w.apply_rules()
         if "name" in patch and str(patch["name"]).strip():
             w.name_ = self.meta[cam_id]["name"] = str(patch["name"]).strip()
         db.update_camera_settings(cam_id, w.settings)
         return w.snapshot()
+
+    def restart_all(self) -> None:
+        """Restart every running camera (e.g. after switching detector weights). Stopped cameras stay stopped."""
+        running = [cid for cid, w in self.cameras.items() if w.is_alive()]
+        for cid in running:
+            self.cameras[cid].stop()
+        for cid in running:
+            self.cameras[cid].join(timeout=15)
+        for cid in running:
+            m = self.meta.get(cid)
+            if m:
+                self._spawn(cid, m["name"], m["kind"], m["source"], self.cameras[cid].settings)
 
     def shutdown(self) -> None:
         for w in self.cameras.values():

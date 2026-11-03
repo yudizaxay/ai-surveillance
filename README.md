@@ -8,64 +8,84 @@
   <img alt="YOLO11" src="https://img.shields.io/badge/Ultralytics-YOLO11-111F68">
   <img alt="React" src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black">
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white">
+  <img alt="Docker" src="https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white">
   <img alt="Status" src="https://img.shields.io/badge/status-proof%20of%20concept-orange">
 </p>
 
-<h3 align="center">One dashboard to monitor every camera — live detection, tracking, counters and analytics.</h3>
+<h3 align="center">One dashboard to monitor every camera — live detection, tracking, zones, alerts and analytics.</h3>
 
 <p align="center">
-  <img src="docs/assets/dashboard-live.png" alt="Live monitor: four cameras with detections, counters and event log" width="100%">
+  <img src="docs/assets/dashboard-live.png" alt="Live monitor: four cameras with detections, a zone, lines, pose and the event log" width="100%">
 </p>
 
 > **Proof of concept.** This project makes no accuracy claim. Results depend on camera angle, lighting,
 > resolution and hardware, and must be evaluated on representative footage before any real-world use.
+> See [Known limitations](#known-limitations) for what does not work well yet.
 
 ---
 
 ## Contents
 
-[Features](#features) · [Screenshots](#screenshots) · [What is pre-trained](#what-is-pre-trained-and-what-is-not) · [Quick start](#quick-start) · [Using the dashboard](#using-the-dashboard) · [Architecture](#architecture) · [API](#api) · [Configuration](#configuration) · [Project layout](#project-layout) · [Privacy](#privacy-and-responsible-use) · [Roadmap](#roadmap)
+[Features](#features) · [Screenshots](#screenshots) · [What is pre-trained](#what-is-pre-trained-and-what-is-not) · [Quick start](#quick-start) · [Using the dashboard](#using-the-dashboard) · [Zones, lines and alerts](#zones-lines-and-alerts) · [Models and performance](#models-and-performance) · [Helmet / PPE](#helmet--ppe) · [Evaluation](#evaluation) · [Login and roles](#login-and-roles) · [Docker](#docker) · [Architecture](#architecture) · [API](#api) · [Configuration](#configuration) · [Project layout](#project-layout) · [Known limitations](#known-limitations) · [Privacy](#privacy-and-responsible-use) · [Roadmap](#roadmap)
 
 ## Features
 
 | | |
 |---|---|
-| **Multi-camera monitoring** | Connect any number of cameras at once and watch them in one grid (Auto, 1–4 columns). Each tile shows status, FPS, latency, resolution, uptime and live counters. Add, start, stop and remove cameras at runtime. |
+| **Multi-camera monitoring** | Any number of cameras in one grid (Auto, 1–4 columns). Each tile shows status, FPS, latency, resolution, uptime and live counters. Add, start, stop and remove cameras at runtime. |
 | **Flexible sources** | Local webcams (auto-discovered), uploaded video files, bundled sample clips, and RTSP / HTTP streams. |
-| **Real-time detection** | People, cars, trucks, buses, motorcycles, bicycles, animals and bags, with bounding boxes, labels and confidence. Low-confidence boxes are drawn thin with a `?` instead of being shown as certain. |
+| **Real-time detection** | People, cars, trucks, buses, motorcycles, bicycles, animals and bags with boxes, labels and confidence. Low-confidence boxes are drawn thin with a `?` instead of being shown as certain. |
 | **Tracking** | ByteTrack assigns persistent track IDs per camera. |
-| **Honest counters** | "Now in frame" and "unique tracked" are always shown separately. A frame-by-frame count is not a unique-person count. |
+| **Honest counters** | “Now in frame” and “unique tracked” are always separate. A frame-by-frame count is not a unique-person count. |
+| **Zones and line crossing** | Draw polygons and lines on a live frame. Get occupancy, entries, in / out counts, dwell time and capacity limits. |
+| **Alerts** | Rule-based alerts with a snapshot and a short video clip (before and after), a dashboard banner and sound, acknowledgement, and an optional Slack-compatible webhook. |
+| **Pose and posture** | Skeleton overlay, standing / sitting / bending / lying, and possible-fall alerts that explicitly ask for human review. |
+| **Heatmap** | Where people and vehicles spent time, per camera. |
 | **Face detection** | Locates faces and landmarks only. **No identity recognition.** |
-| **Analytics** | Trend charts for objects in view, throughput and latency; a class breakdown; per-camera table. |
-| **Event log** | New-track and camera online / offline / error events stored in SQLite. Searchable, filterable, exportable as CSV. |
-| **Per-camera controls** | Confidence threshold, tracking on/off and face detection on/off, adjustable live. |
+| **Helmet / PPE pipeline** | Ready for a custom-trained model. Reports `unknown` rather than guessing. No model is bundled. |
+| **Analytics and events** | Trend charts, per-camera breakdown, searchable event log, CSV export. |
+| **Evaluation page** | Precision, recall, F1 and mAP per class, stored with their dataset and thresholds. |
+| **Login and roles** | Optional admin / viewer accounts (viewers are read-only). |
+| **Model choice** | Fast / Balanced / Most accurate, globally or per camera. |
 
 ## Screenshots
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/assets/camera-detail.png" alt="Camera detail view with per-class counts and settings"><br><sub><b>Camera detail</b> — per-class counts, confidence slider, tracking and face toggles.</sub></td>
-    <td width="50%"><img src="docs/assets/dashboard-analytics.png" alt="Analytics page with trend charts"><br><sub><b>Analytics</b> — objects in view, unique tracked, FPS and latency over time.</sub></td>
+    <td width="50%"><img src="docs/assets/zone-editor.png" alt="Zone editor drawing a restricted area"><br><sub><b>Zone editor</b> — draw zones and lines on a live frame; set entry alerts, dwell and capacity limits.</sub></td>
+    <td width="50%"><img src="docs/assets/dashboard-alerts.png" alt="Alerts page with snapshots"><br><sub><b>Alerts</b> — snapshots, clips, acknowledgement and filters.</sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="docs/assets/dashboard-events.png" alt="Events page with search and filters"><br><sub><b>Events</b> — searchable, filterable log with CSV export.</sub></td>
-    <td width="50%"><img src="docs/assets/dashboard-system.png" alt="System page with models and capabilities"><br><sub><b>System</b> — device, models, capabilities and per-camera runtime.</sub></td>
+    <td width="50%"><img src="docs/assets/camera-detail.png" alt="Camera detail with pose, zone and settings"><br><sub><b>Camera detail</b> — per-class counts, pose, zones, model and thresholds.</sub></td>
+    <td width="50%"><img src="docs/assets/heatmap.png" alt="Heatmap view"><br><sub><b>Heatmap</b> — where activity concentrates.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/assets/alert-clip.png" alt="Alert review with video clip"><br><sub><b>Alert review</b> — play the clip before deciding.</sub></td>
+    <td width="50%"><img src="docs/assets/dashboard-analytics.png" alt="Analytics trends"><br><sub><b>Analytics</b> — objects in view, FPS and latency over time.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/assets/dashboard-evaluation.png" alt="Evaluation page"><br><sub><b>Evaluation</b> — metrics with their dataset and thresholds.</sub></td>
+    <td width="50%"><img src="docs/assets/dashboard-system.png" alt="System page"><br><sub><b>System</b> — models, capabilities, webhook and device.</sub></td>
   </tr>
 </table>
 
-The dashboard is responsive; the sidebar collapses to icons on tablets and a top bar on phones.
+The dashboard is responsive: the sidebar collapses to icons on tablets and to a top bar on phones.
 
 ## What is pre-trained and what is not
 
 | Capability | Status |
 |---|---|
-| Person, vehicles, animals, bags | Pre-trained COCO model (YOLO11n) |
+| Person, vehicles, animals, bags | Pre-trained COCO model (YOLO11) |
 | Multi-object tracking | ByteTrack (Ultralytics) |
 | Face detection | Pre-trained YuNet |
-| Helmet / PPE detection | **Not implemented** — needs a custom-trained model and a labelled dataset |
-| Pose, activity recognition, zones, line-crossing, clothing categories | **Not implemented** — roadmap |
+| Pose and posture | Pre-trained YOLO11-pose keypoints + rule-based posture |
+| Zones, line crossing, dwell, capacity, alerts | Rule engine (not a model) |
+| Helmet / PPE | **No model bundled.** Pipeline and training script included; needs your own labelled data |
+| Clothing / covering categories | **Intentionally not built** (sensitive attribute) |
+| Identity / face recognition | **Intentionally not built** |
+| Activity recognition (running, lifting) | Not implemented |
 
-The dashboard states the same limitations on its **System** page.
+The dashboard states the same on its **System** page.
 
 ## Quick start
 
@@ -87,7 +107,8 @@ Open **<http://localhost:5173>**, click **Add camera**, and choose a sample vide
 cd backend
 uv venv --python 3.12 .venv
 uv pip install --python .venv/bin/python -r requirements.txt
-./download_models.sh        # YOLO11n + YuNet into backend/models/
+./download_models.sh        # YOLO11m + YOLO11n, YOLO11n-pose and YuNet into backend/models/
+WITH_XL=1 ./download_models.sh   # optional: also the most accurate model (yolo11x, ~110 MB)
 ./download_samples.sh       # optional demo clips into backend/data/samples/
 .venv/bin/uvicorn app.main:app --port 8000
 
@@ -102,21 +123,126 @@ cd frontend && npm install && npm run dev
 
 | Page | What it is for |
 |---|---|
-| **Live monitor** | Camera grid, all-camera totals and the live event feed. Double-click a tile (or use the expand icon) for the detail view. |
+| **Live monitor** | Camera grid, all-camera totals and the live event feed. Click the expand icon (or double-click a tile) for the detail view. |
+| **Alerts** | Every alert with its snapshot and clip. Acknowledge individually or all at once; sound on / off. |
 | **Analytics** | Trends over the last 5–60 minutes, unique-by-class breakdown and a per-camera table. |
-| **Events** | Full event history with search, camera and type filters, and CSV export. |
-| **System** | Service health, inference device, models, capability status and per-camera runtime. |
+| **Events** | Full history with search, camera and type filters, and CSV export. |
+| **Evaluation** | Stored precision / recall / F1 / mAP runs. |
+| **System** | Service health, detector choice, capability status, alert webhook and per-camera runtime. |
 
-Pages are deep-linkable (`#/live`, `#/analytics`, `#/events`, `#/system`).
+Pages are deep-linkable (`#/live`, `#/alerts`, `#/analytics`, `#/events`, `#/evaluation`, `#/system`).
 
-**Adding cameras**
-
-| Source | How |
+| Add a camera from | How |
 |---|---|
 | Sample video | *Add camera → Sample videos* |
 | Webcam | *Add camera → Local webcam* (scans indexes 0–4) |
-| Video file | *Add camera → Upload video* (mp4, mov, avi, mkv, webm; up to 300 MB). Files loop, with the tracker reset on each loop. |
+| Video file | *Add camera → Upload video* (mp4, mov, avi, mkv, webm; up to 300 MB). Files loop in real time and the tracker resets on each loop. |
 | IP / CCTV camera | *Add camera → RTSP / URL*, e.g. `rtsp://user:pass@192.168.1.10:554/stream1` |
+
+## Zones, lines and alerts
+
+Open a camera’s detail view and choose **Edit zones & lines**. Draw on a clean frame, drag handles to reshape, and
+set rules per shape:
+
+| Rule | Where | Raises |
+|---|---|---|
+| Alert on entry | zone | `zone_enter` alert |
+| Dwell longer than N seconds | zone | `dwell` alert (once per track) |
+| More than N inside | zone | `capacity` alert |
+| No helmet (needs a PPE model) | zone | `ppe_violation` alert |
+| Alert on every crossing | line | `line_cross` alert (an arrow marks the “in” direction; flip it if needed) |
+| Possible fall | pose | `fall` alert after ~1.5 s lying down |
+| Camera failure | camera | `camera_error` alert |
+
+Zone membership and line crossing use each object’s **foot point** (bottom-centre of its box). Each shape counts
+only the classes you choose. Every alert stores a snapshot and a clip (about 5 s before and 4 s after) that you can
+review from the Alerts page; alerts that arrive within 10 s of each other share a clip. Clips need `ffmpeg`
+(otherwise the snapshot is shown).
+
+**Webhook.** Under *System → Alert webhook* set an `http(s)` URL. Alerts are POSTed as JSON
+(`{"text": "...", "event": {...}}`), compatible with Slack-style incoming webhooks. The URL is stored on the server and
+never shown again.
+
+Alerts are prompts for a person to look, not conclusions. Possible-fall and no-helmet alerts can be wrong; review the
+clip before acting.
+
+## Models and performance
+
+COCO-trained detectors are weakest on **overhead (top-down) views**, which the bundled *Highway* sample uses.
+Measured on that clip (8 frames with a visible car, 16 empty frames, confidence 0.25):
+
+| Model | Car frames detected | False-positive frames | Notes |
+|---|---|---|---|
+| `yolo11n` (Fast) | 1 / 8 | 0 / 16 | Highest FPS |
+| `yolo11m` (Balanced, default) | 4–6 / 8 | 0 / 16 | ~45 ms per frame on Apple MPS |
+| `yolo11x` (Most accurate) | 7 / 8 | 0 / 16 | ~165 ms per frame on Apple MPS |
+
+A small hand-checked sample, not a benchmark. The fix that actually scales is fine-tuning on overhead footage.
+Choose the model globally under *System → Detection model*, or **per camera** in its detail view (for example the
+overhead camera on *Most accurate* and the rest on *Balanced*). Switching restarts the affected cameras.
+
+Cameras share one accelerator and inference is serialised, so FPS per camera falls as cameras are added. Expect
+roughly 3–5 FPS per camera with four cameras on a laptop GPU using the Balanced model. Video files are dropped to
+real-time speed rather than played in slow motion. Pose runs on alternate frames.
+
+## Helmet / PPE
+
+No PPE model is bundled, because helmet detection needs a detector trained on labelled PPE data from conditions like
+yours. The rest is in place: the detector hook, person ↔ helmet association (helmet in the top 35 % of the person
+box), per-zone “no helmet” alerts and a status chip on each person.
+
+A person with no matching detection is shown as **helmet ? (unknown)**, never as “no helmet”.
+
+```bash
+cd backend
+.venv/bin/python train_ppe.py --data /path/to/ppe/data.yaml --epochs 60      # writes models/ppe.pt
+.venv/bin/python evaluate.py --weights models/ppe.pt --data /path/to/ppe/data.yaml --name "PPE · site A"
+```
+
+Class names are matched by keyword (`Hardhat`, `NO-Hardhat`, `Safety Vest`, …). Restart the backend, then switch on
+*Helmet / PPE* for a camera. Prefer footage from your own cameras; check any public dataset’s licence.
+
+## Evaluation
+
+```bash
+cd backend
+.venv/bin/python evaluate.py --weights models/yolo11m.pt --data my_data.yaml --name "Site A · night"
+```
+
+Results appear on the **Evaluation** page together with the dataset, image count and thresholds they were measured
+with. The bundled entry is a COCO8 smoke test (4 validation images): it proves the pipeline works, and says
+nothing about accuracy on your cameras. Do not quote one accuracy figure without the dataset, class, threshold and
+method behind it.
+
+## Login and roles
+
+Authentication is **off by default** (fine on a trusted local machine). To switch it on, set:
+
+| Variable | Meaning |
+|---|---|
+| `VM_ADMIN_PASSWORD` | Enables login. The `admin` account can change everything. |
+| `VM_ADMIN_USER` | Admin username (default `admin`). |
+| `VM_VIEWER_PASSWORD` | Optional read-only `viewer` account (cannot add / stop / remove cameras, edit rules, or acknowledge). |
+| `VM_VIEWER_USER` | Viewer username (default `viewer`). |
+
+Sessions are signed HttpOnly cookies, failed logins are rate-limited, and every API write checks the role. This is
+deliberately small: put the service behind HTTPS (a reverse proxy) before exposing it beyond a trusted network.
+
+```bash
+VM_ADMIN_PASSWORD='choose-a-strong-one' VM_VIEWER_PASSWORD='another-one' ./run.sh
+```
+
+## Docker
+
+```bash
+VM_ADMIN_PASSWORD='choose-a-strong-one' docker compose up --build
+# open http://localhost:8000
+```
+
+One container serves the API and the built dashboard; state (cameras, events, uploads, clips) lives in the
+`vm-data` volume. The image runs CPU inference with PyTorch’s CPU build and downloads the models at build time.
+Local webcams are not available inside containers; use video files or RTSP streams. For NVIDIA GPUs install the CUDA
+build of PyTorch in the image and add the usual `deploy.resources.reservations.devices` entry to the compose file.
 
 ## Architecture
 
@@ -125,84 +251,118 @@ flowchart LR
     A[Webcam / video file / RTSP] --> B[OpenCV capture<br/>one thread per camera]
     B --> C[YOLO11 + ByteTrack]
     B --> D[YuNet face detector]
-    C --> E[Overlay + stats + events]
+    B --> P[Pose · PPE<br/>optional]
+    C --> R[Rule engine<br/>zones · lines · dwell]
+    P --> R
+    R --> E[Overlay + stats + events]
     D --> E
     E -->|MJPEG| F[React dashboard]
-    E -->|SQLite| G[(Event store)]
+    E -->|SQLite| G[(Events · cameras)]
+    E -->|snapshots + clips| M[(Media)]
+    R -->|alerts| W[Webhook]
     G --> H[FastAPI]
     E -->|WebSocket 1 Hz| F
     H -->|REST| F
 ```
 
-- Each camera runs in its own worker thread. Inference is serialised through one lock so several cameras
-  can share a single GPU / accelerator safely.
-- Video reaches the browser as MJPEG; stats and events arrive over a WebSocket, with automatic reconnect.
+- Each camera runs in its own worker thread. Inference is serialised through one lock so several cameras can share a
+  single accelerator safely.
+- Video reaches the browser as MJPEG; stats and events arrive over a WebSocket with automatic reconnect.
 - Frames are downscaled to a maximum width of 960 px for speed and bandwidth.
+- Zones and lines are stored per camera in normalised coordinates, independent of stream resolution.
 
 ## API
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/api/health` | Device, model names, uptime |
+| GET | `/api/health` | Device, model names, uptime, auth state |
 | GET | `/api/cameras` | All cameras with live stats |
 | POST | `/api/cameras` | Add `{name, kind: webcam\|file\|rtsp, source}` |
 | POST | `/api/cameras/upload` | Upload a video (multipart: `file`, `name`) |
 | POST | `/api/cameras/{id}/start` · `/stop` | Control a camera |
-| PATCH | `/api/cameras/{id}` | `{conf, faces, tracking, name}` |
+| PATCH | `/api/cameras/{id}` | `{conf, faces, tracking, pose, ppe, model, name, zones, lines}` |
 | DELETE | `/api/cameras/{id}` | Remove a camera |
 | GET | `/api/cameras/{id}/stream` | MJPEG stream with overlays |
-| GET | `/api/cameras/{id}/snapshot` | Latest annotated frame (JPEG) |
+| GET | `/api/cameras/{id}/snapshot[?raw=true]` | Latest frame (annotated, or clean for the zone editor) |
+| GET | `/api/cameras/{id}/heatmap` · POST `…/heatmap/reset` | Heatmap image · reset |
 | GET | `/api/discover` · `/api/samples` | Local webcams · sample clips |
 | GET | `/api/summary` · `/api/history?minutes=` | Aggregated stats · trend data |
 | GET | `/api/events` · `/api/report.csv` | Event log · CSV export |
+| GET | `/api/alerts` · POST `/api/alerts/ack` | Alerts · acknowledge `{id}` or `{all: true}` |
+| GET | `/api/media/{name}` | Alert snapshot / clip |
+| GET/PUT | `/api/settings/detector` | Global detection model |
+| GET/PUT | `/api/settings/webhook` · POST `…/test` | Alert webhook |
+| GET | `/api/eval` | Stored evaluation runs |
+| POST | `/api/auth/login` · `/logout` · GET `/api/auth/me` | Session |
 | WS | `/ws` | `stats` (1 Hz) and `event` messages |
 
 Interactive docs are served at <http://localhost:8000/docs>.
 
 ## Configuration
 
-Tunables live in `backend/app/config.py`:
+| Setting | Where | Default | Meaning |
+|---|---|---|---|
+| `VM_MODEL` | env | `yolo11m.pt` | Default detector weights (also switchable in the UI) |
+| `VM_DATA_DIR` | env | `backend/data` | Database, uploads, clips, evaluation results |
+| `VM_ADMIN_PASSWORD` etc. | env | unset | See [Login and roles](#login-and-roles) |
+| `UNCERTAIN_BELOW` | `backend/app/config.py` | `0.45` | Boxes below this confidence are drawn as uncertain |
+| `OBJECT_MIN_CONF` | `backend/app/config.py` | `0.5` | Stricter threshold for bags / objects (easily confused) |
+| `STREAM_MAX_WIDTH` | `backend/app/config.py` | `960` | Frame width cap for inference and streaming |
+| `JPEG_QUALITY` | `backend/app/config.py` | `72` | MJPEG quality |
 
-| Setting | Default | Meaning |
-|---|---|---|
-| `YOLO_WEIGHTS` | `models/yolo11n.pt` | Swap for `yolo11s.pt` / `yolo11m.pt` for accuracy at lower FPS |
-| `UNCERTAIN_BELOW` | `0.45` | Boxes below this confidence are drawn as uncertain |
-| `STREAM_MAX_WIDTH` | `960` | Frame width cap for inference and streaming |
-| `JPEG_QUALITY` | `72` | MJPEG quality |
-
-Per-camera confidence, tracking and face detection are changed live from the camera detail view.
+Per-camera confidence, tracking, face, pose, PPE and model are changed live from the camera detail view.
 
 ## Project layout
 
 ```
-backend/            FastAPI service
-  app/camera.py       per-camera worker: capture, detect, track, overlay
-  app/manager.py      camera registry, lifecycle, persistence
-  app/main.py         REST, MJPEG and WebSocket endpoints
-  app/db.py           SQLite (cameras, events)
-frontend/           React + TypeScript + Vite dashboard
-  src/pages.tsx       Live, Analytics, Events, System pages
-  src/components.tsx  camera tile, detail view, add-camera dialog
-  src/charts.tsx      dependency-free SVG charts
-docs/assets/        logo, banner and screenshots
+backend/              FastAPI service
+  app/camera.py         per-camera worker: capture, detect, track, pose, overlay
+  app/rules.py          zones, line crossing, dwell, capacity
+  app/pose.py · ppe.py  posture rules · helmet association
+  app/media.py          alert snapshots and clips
+  app/manager.py        camera registry, lifecycle, webhook
+  app/auth.py           optional login and roles
+  app/main.py           REST, MJPEG and WebSocket endpoints
+  evaluate.py           metrics → Evaluation page
+  train_ppe.py          fine-tune a helmet / PPE model
+frontend/             React + TypeScript + Vite dashboard
+  src/pages.tsx · extra.tsx   pages, alerts, evaluation, login
+  src/components.tsx          camera tile, detail view, add-camera dialog
+  src/ZoneEditor.tsx          zone and line editor
+  src/charts.tsx              dependency-free SVG charts
+Dockerfile · docker-compose.yml
+docs/assets/          logo, banner and screenshots
 ```
+
+## Known limitations
+
+- **Overhead / top-down views are hard** for COCO-trained detectors, including the bundled Highway sample. Larger
+  models help ([measurements](#models-and-performance)); fine-tuning on overhead data is the real fix.
+- **FPS is shared** between cameras and drops as you add more. The Balanced model on a laptop gives about 3–5 FPS
+  per camera with four cameras.
+- **Unique counts** are per tracking session; people who are occluded or leave and re-enter can be counted twice.
+- **PPE is not included**; see [Helmet / PPE](#helmet--ppe).
+- **Fall detection** is a posture rule, not a trained activity model, and may raise false alarms.
+- Evaluation numbers shipped here are a 4-image smoke test.
+- Real webcam and RTSP camera support has not been exercised against physical hardware in this repository’s tests;
+  the Docker image has not been build-tested on every platform.
 
 ## Privacy and responsible use
 
 - Use footage only where you have the authority and permission to do so.
 - Face detection locates faces; it does not identify anyone. Face recognition is intentionally not included.
 - The system does not infer religion, ethnicity, identity, intent or suspiciousness from appearance or clothing.
-- Restrict access to video and event records, define retention and deletion, and keep a human in the loop
-  for any consequential decision.
+- Restrict access to video and event records (turn on login), define retention and deletion, and keep a human in
+  the loop for any consequential decision. Alert clips are stored on disk and capped at the newest 300 files.
 
 ## Roadmap
 
-- [ ] Helmet / PPE detector (custom-trained) with person association
-- [ ] Pose estimation and posture
-- [ ] Zones, line-crossing and dwell-time rules with alerts
+- [ ] Fine-tuned overhead / aerial vehicle detector
+- [ ] Trained helmet / PPE model with evaluation on site footage
+- [ ] Activity recognition (running, loading / unloading) with a temporal model
 - [ ] Face-visibility (occluded / not visible) classification
-- [ ] Evaluation harness: precision, recall, mAP per class and camera condition
-- [ ] Authentication and role-based access for multi-user deployments
+- [ ] Batched multi-camera inference for higher FPS per camera
+- [ ] Retention policies and audit log
 
 ## Credits
 

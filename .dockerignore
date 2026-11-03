@@ -1,0 +1,10 @@
+.git
+**/node_modules
+**/.venv
+frontend/dist
+backend/data
+backend/models/*.pt
+backend/models/*.onnx
+**/__pycache__
+sow.md
+docs

@@ -1,0 +1,18 @@
+services:
+  vision-monitor:
+    build: .
+    image: vision-monitor
+    ports:
+      - "8000:8000"
+    environment:
+      # Optional login. Leave VM_ADMIN_PASSWORD unset to run without authentication (trusted networks only).
+      VM_ADMIN_PASSWORD: ${VM_ADMIN_PASSWORD:-}
+      VM_VIEWER_PASSWORD: ${VM_VIEWER_PASSWORD:-}
+      # yolo11n.pt (fast) | yolo11m.pt (balanced, default) | yolo11x.pt (most accurate; run download_models for it)
+      VM_MODEL: ${VM_MODEL:-yolo11m.pt}
+    volumes:
+      - vm-data:/data          # cameras, events, uploads, alert clips, evaluation results
+    restart: unless-stopped
+
+volumes:
+  vm-data:

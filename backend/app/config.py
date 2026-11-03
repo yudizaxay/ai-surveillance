@@ -1,17 +1,21 @@
 """Static configuration: paths, COCO class groups, colours."""
+import os
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = BASE_DIR / "data"
+DATA_DIR = Path(os.getenv("VM_DATA_DIR", BASE_DIR / "data"))
 UPLOAD_DIR = DATA_DIR / "uploads"
 SAMPLE_DIR = DATA_DIR / "samples"
 MODEL_DIR = BASE_DIR / "models"
 DB_PATH = DATA_DIR / "surveillance.db"
 
-YOLO_WEIGHTS = MODEL_DIR / "yolo11n.pt"
 FACE_MODEL = MODEL_DIR / "yunet.onnx"
+POSE_WEIGHTS = MODEL_DIR / "yolo11n-pose.pt"
+PPE_MODEL = MODEL_DIR / "ppe.pt"          # optional, custom-trained (not bundled)
+MEDIA_DIR = DATA_DIR / "media"
+EVAL_DIR = DATA_DIR / "eval"
 
-for _d in (DATA_DIR, UPLOAD_DIR, SAMPLE_DIR, MODEL_DIR):
+for _d in (DATA_DIR, UPLOAD_DIR, SAMPLE_DIR, MODEL_DIR, MEDIA_DIR, EVAL_DIR):
     _d.mkdir(parents=True, exist_ok=True)
 
 # COCO class id -> (label, category)
@@ -55,6 +59,7 @@ CATEGORY_COLORS = {
 }
 
 # Detections below this are drawn as "uncertain" (thin box, "?" label)
+OBJECT_MIN_CONF = 0.5     # bags etc. are easily confused with other things: demand more evidence
 UNCERTAIN_BELOW = 0.45
 STREAM_MAX_WIDTH = 960
 JPEG_QUALITY = 72

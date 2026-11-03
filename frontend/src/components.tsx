@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  Camera as CamIcon, Expand, FileVideo, Link2, Play, Plus, Radar, Square, Trash2, Upload, Video, X,
+  Camera as CamIcon, Expand, FileVideo, Flame, Link2, Pencil, Play, Plus, Radar, Square, Trash2, Upload, Video, X,
 } from 'lucide-react'
 import { api } from './api'
-import type { Camera, DetEvent, Sample, Summary } from './types'
+import type { Camera, DetectorInfo, DetEvent, Sample, Summary } from './types'
 
 export const CAT_COLORS: Record<string, string> = {
   person: '#50dc64', car: '#ffaa3c', truck: '#3c8cff', bus: '#3cc8ff',
@@ -13,6 +13,7 @@ const CAT_LABEL: Record<string, string> = {
   person: 'People', car: 'Cars', truck: 'Trucks', bus: 'Buses', motorcycle: 'Motorcycles',
   bicycle: 'Bicycles', animal: 'Animals', object: 'Bags', face: 'Faces',
 }
+const POSTURE_KEYS = ['standing', 'sitting', 'bending', 'lying']
 const CATS = ['person', 'car', 'truck', 'bus', 'motorcycle', 'bicycle', 'animal', 'object']
 
 const fmtUptime = (s: number) =>
@@ -25,8 +26,8 @@ export function StatusBadge({ status }: { status: Camera['status'] }) {
 
 /* ------------------------------------------------------------------ tile */
 export function CameraTile({
-  cam, onExpand, onError,
-}: { cam: Camera; onExpand: () => void; onError: (m: string) => void }) {
+  cam, onExpand, onError, readOnly = false,
+}: { cam: Camera; onExpand: () => void; onError: (m: string) => void; readOnly?: boolean }) {
   const [nonce, setNonce] = useState(0)
   const prev = useRef(cam.status)
   useEffect(() => {
@@ -63,13 +64,15 @@ export function CameraTile({
           <h3 title={cam.name}>{cam.name}</h3>
           <div className="actions">
             <button className="icon" title="Expand" onClick={onExpand}><Expand size={15} /></button>
-            {active
+            {!readOnly && (active
               ? <button className="icon" title="Stop" onClick={() => run(api.stop(cam.id))}><Square size={15} /></button>
-              : <button className="icon" title="Start" onClick={() => run(api.start(cam.id))}><Play size={15} /></button>}
-            <button className="icon danger" title="Remove camera"
-              onClick={() => { if (confirm(`Remove "${cam.name}"?`)) run(api.remove(cam.id)) }}>
-              <Trash2 size={15} />
-            </button>
+              : <button className="icon" title="Start" onClick={() => run(api.start(cam.id))}><Play size={15} /></button>)}
+            {!readOnly && (
+              <button className="icon danger" title="Remove camera"
+                onClick={() => { if (confirm(`Remove "${cam.name}"?`)) run(api.remove(cam.id)) }}>
+                <Trash2 size={15} />
+              </button>
+            )}
           </div>
         </div>
         <div className="metrics">
@@ -79,7 +82,7 @@ export function CameraTile({
           <span>{fmtUptime(cam.uptime)}</span>
         </div>
         <div className="chips">
-          {chips.length === 0 && <span className="muted">No detections yet</span>}
+          {chips.length === 0 && !(cam.settings.zones?.length || cam.settings.lines?.length) && <span className="muted">No detections yet</span>}
           {chips.map((c) => (
             <span key={c} className="chip" title={`${CAT_LABEL[c]}: ${cam.current[c]} in frame now · ${cam.unique[c]} unique tracked`}>
               <i style={{ background: CAT_COLORS[c] }} />{CAT_LABEL[c]} <b>{cam.current[c]}</b>
@@ -89,6 +92,20 @@ export function CameraTile({
           {cam.settings.faces && cam.current.face > 0 && (
             <span className="chip"><i style={{ background: CAT_COLORS.face }} />Faces <b>{cam.current.face}</b></span>
           )}
+          {(cam.settings.zones ?? []).map((z) => (
+            <span key={z.id} className="chip zone" title={`Zone “${z.name}”: ${cam.rules?.zones[z.id]?.occupancy ?? 0} inside now · ${cam.rules?.zones[z.id]?.entries ?? 0} entries`}>
+              <i style={{ background: z.color, borderRadius: 2 }} />{z.name} <b>{cam.rules?.zones[z.id]?.occupancy ?? 0}</b>
+              <small>/{cam.rules?.zones[z.id]?.entries ?? 0} in</small>
+            </span>
+          ))}
+          {(cam.settings.lines ?? []).map((l) => (
+            <span key={l.id} className="chip line" title={`Line “${l.name}”: crossings in / out`}>
+              <i style={{ background: '#3cc8ff', borderRadius: 2, height: 3 }} />{l.name} <b>↓{cam.rules?.lines[l.id]?.in ?? 0}</b> <b>↑{cam.rules?.lines[l.id]?.out ?? 0}</b>
+            </span>
+          ))}
+          {cam.settings.pose && Object.entries(cam.postures ?? {}).filter(([, n]) => n > 0).map(([p, n]) => (
+            <span key={p} className="chip pose">{p} <b>{n}</b></span>
+          ))}
         </div>
       </div>
     </article>
@@ -96,9 +113,31 @@ export function CameraTile({
 }
 
 /* -------------------------------------------------------------- expanded */
-export function ExpandedView({ cam, onClose, onError }: { cam: Camera; onClose: () => void; onError: (m: string) => void }) {
+export function ExpandedView({
+  cam, onClose, onError, onEditZones, readOnly = false,
+}: { cam: Camera; onClose: () => void; onError: (m: string) => void; onEditZones: () => void; readOnly?: boolean }) {
   const [conf, setConf] = useState(cam.settings.conf)
-  const patch = (p: Record<string, unknown>) => api.patch(cam.id, p).catch((e) => onError(e.message))
+  // optimistic toggles: reflect the click immediately, drop the override once the server state catches up
+  const [opt, setOpt] = useState<Partial<Camera['settings']>>({})
+  const st = { ...cam.settings, ...opt }
+  useEffect(() => {
+    const keys = Object.keys(opt) as (keyof Camera['settings'])[]
+    if (keys.length && keys.every((k) => cam.settings[k] === opt[k])) setOpt({})
+  }, [cam.settings, opt])
+  useEffect(() => { if (Object.keys(opt).length) { const t = setTimeout(() => setOpt({}), 4000); return () => clearTimeout(t) } }, [opt])
+  const [heat, setHeat] = useState(false)
+  const [det, setDet] = useState<DetectorInfo | null>(null)
+  useEffect(() => { api.detector().then(setDet).catch(() => {}) }, [])
+  const [tick, setTick] = useState(0)
+  useEffect(() => {
+    if (!heat) return
+    const t = setInterval(() => setTick((n) => n + 1), 1500)
+    return () => clearInterval(t)
+  }, [heat])
+  const patch = (p: Record<string, unknown>) => {
+    setOpt((o) => ({ ...o, ...p } as Partial<Camera['settings']>))
+    return api.patch(cam.id, p).catch((e) => { setOpt({}); onError(e.message) })
+  }
   useEffect(() => {
     const k = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', k)
@@ -113,10 +152,22 @@ export function ExpandedView({ cam, onClose, onError }: { cam: Camera; onClose: 
           <button className="icon" onClick={onClose}><X size={18} /></button>
         </header>
         <div className="expanded-main">
+          <div className="expanded-left">
           <div className="expanded-video">
             {cam.status === 'live'
-              ? <img src={api.streamUrl(cam.id)} alt={cam.name} />
+              ? (heat
+                ? <img key="heat" src={`${api.heatmapUrl(cam.id)}?t=${tick}`} alt={`${cam.name} heatmap`} />
+                : <img key="live" src={api.streamUrl(cam.id)} alt={cam.name} />)
               : <div className="tile-placeholder big">{cam.error || `Camera ${cam.status}`}</div>}
+          </div>
+          <div className="view-bar">
+            <div className="seg">
+              <button className={!heat ? 'on' : ''} onClick={() => setHeat(false)}>Live</button>
+              <button className={heat ? 'on' : ''} onClick={() => setHeat(true)}><Flame size={13} />Heatmap</button>
+            </div>
+            {heat && !readOnly && <button className="link" onClick={() => api.resetHeat(cam.id).catch((e) => onError(e.message))}>Reset heatmap</button>}
+            {heat && <span className="muted">where people and vehicles spent time since the camera started</span>}
+          </div>
           </div>
           <aside>
             <h4>Live counts</h4>
@@ -135,12 +186,40 @@ export function ExpandedView({ cam, onClose, onError }: { cam: Camera; onClose: 
             <h4>Settings</h4>
             <label className="field">Confidence threshold <b>{conf.toFixed(2)}</b>
               <input type="range" min={0.1} max={0.9} step={0.05} value={conf}
-                onChange={(e) => setConf(+e.target.value)} onMouseUp={() => patch({ conf })} onTouchEnd={() => patch({ conf })} onKeyUp={() => patch({ conf })} />
+                disabled={readOnly} onChange={(e) => setConf(+e.target.value)} onMouseUp={() => patch({ conf })} onTouchEnd={() => patch({ conf })} onKeyUp={() => patch({ conf })} />
             </label>
-            <label className="toggle"><input type="checkbox" checked={cam.settings.tracking}
+            <label className="field">Detection model
+              <select value={st.model ?? ''} disabled={readOnly} onChange={(e) => patch({ model: e.target.value })}>
+                <option value="">Default ({det?.options.find((o) => o.file === det.current)?.label ?? det?.current ?? '…'})</option>
+                {det?.options.filter((o) => o.installed).map((o) => <option key={o.file} value={o.file}>{o.label} · {o.file}</option>)}
+              </select>
+            </label>
+            <label className="toggle"><input type="checkbox" checked={st.tracking} disabled={readOnly}
               onChange={(e) => patch({ tracking: e.target.checked })} /> Object tracking (track IDs)</label>
-            <label className="toggle"><input type="checkbox" checked={cam.settings.faces}
+            <label className="toggle"><input type="checkbox" checked={st.faces} disabled={readOnly}
               onChange={(e) => patch({ faces: e.target.checked })} /> Face detection (no identification)</label>
+            <label className="toggle" title={cam.features.pose_available ? '' : 'Pose model not installed'}>
+              <input type="checkbox" checked={st.pose} disabled={readOnly || !cam.features.pose_available}
+                onChange={(e) => patch({ pose: e.target.checked })} /> Pose &amp; posture (skeleton, fall check)</label>
+            <label className="toggle" title={cam.features.ppe_available ? '' : 'Add a custom-trained model at backend/models/ppe.pt'}>
+              <input type="checkbox" checked={st.ppe} disabled={readOnly || !cam.features.ppe_available}
+                onChange={(e) => patch({ ppe: e.target.checked })} /> Helmet / PPE{!cam.features.ppe_available && <em className="muted"> · needs model</em>}</label>
+            {cam.features.pose_error && <p className="note err">{cam.features.pose_error}</p>}
+            {cam.features.ppe_error && st.ppe && <p className="note err">{cam.features.ppe_error}</p>}
+            {st.pose && (
+              <p className="note">Posture now: {POSTURE_KEYS.map((k) => `${k} ${cam.postures?.[k] ?? 0}`).join(' · ')}. A “lying” person for 1.5 s raises a <b>possible fall</b> alert for human review.</p>
+            )}
+            {st.ppe && cam.features.ppe_available && (
+              <p className="note">Helmet: {cam.ppe?.helmet_yes ?? 0} yes · {cam.ppe?.helmet_no ?? 0} no · {cam.ppe?.helmet_unknown ?? 0} unknown (not enough evidence)</p>
+            )}
+            <h4>Zones &amp; lines</h4>
+            <button className="ghost" onClick={onEditZones}><Pencil size={14} />{readOnly ? 'View' : 'Edit'} zones &amp; lines ({(cam.settings.zones?.length ?? 0) + (cam.settings.lines?.length ?? 0)})</button>
+            {(cam.settings.zones ?? []).map((z) => (
+              <div key={z.id} className="stat-line"><span><i className="dot" style={{ background: z.color }} />{z.name}</span><b>{cam.rules?.zones[z.id]?.occupancy ?? 0} now · {cam.rules?.zones[z.id]?.entries ?? 0} entries</b></div>
+            ))}
+            {(cam.settings.lines ?? []).map((l) => (
+              <div key={l.id} className="stat-line"><span><i className="dot" style={{ background: '#3cc8ff' }} />{l.name}</span><b>↓ in {cam.rules?.lines[l.id]?.in ?? 0} · ↑ out {cam.rules?.lines[l.id]?.out ?? 0}</b></div>
+            ))}
             <p className="note">Boxes below 0.45 confidence are drawn thin with a “?” rather than shown as certain.</p>
             <div className="stat-line">Inference device <b>{cam.device}</b></div>
             <div className="stat-line">Frame detections (cumulative) <b>{cam.detections_total.toLocaleString()}</b></div>
@@ -237,7 +316,10 @@ export function AddCameraModal({ onClose, onAdded, onError }: { onClose: () => v
 }
 
 /* --------------------------------------------------------------- sidebar */
-const EV_ICON: Record<string, string> = { new_track: '◆', camera_online: '●', camera_offline: '○', camera_error: '▲' }
+const EV_ICON: Record<string, string> = {
+  new_track: '◆', camera_online: '●', camera_offline: '○', camera_error: '▲', line_cross: '⇅', zone_enter: '▣',
+  zone_exit: '▢', dwell: '◷', capacity: '⚑', fall: '⚠', ppe_violation: '⛑',
+}
 
 export function EventFeed({ events }: { events: DetEvent[] }) {
   return (
@@ -246,7 +328,7 @@ export function EventFeed({ events }: { events: DetEvent[] }) {
       <ul className="events">
         {events.length === 0 && <li className="muted">No events yet</li>}
         {events.slice(0, 40).map((e) => (
-          <li key={e.id} className={`ev ev-${e.type}`}>
+          <li key={e.id} className={`ev ev-${e.type} ${e.severity === 'alert' ? 'ev-alert' : ''}`}>
             <span className="ev-ic">{EV_ICON[e.type] ?? '•'}</span>
             <span className="ev-msg">{e.message}<small>{e.camera_name}{e.confidence ? ` · ${(e.confidence * 100).toFixed(0)}%` : ''}</small></span>
             <time>{new Date(e.ts * 1000).toLocaleTimeString()}</time>
@@ -282,7 +364,10 @@ export function AboutPanel() {
       <ul>
         <li><b>Pre-trained (COCO):</b> person, vehicles, animals, bags — YOLO11n + ByteTrack.</li>
         <li><b>Face:</b> YuNet detector — locates faces only; no identity recognition.</li>
-        <li><b>Not built yet:</b> helmet / PPE, pose, zones, clothing — need custom-trained models.</li>
+        <li><b>Pose &amp; posture:</b> YOLO11n-pose with rule-based posture; fall alerts need human review.</li>
+        <li><b>Zones, lines, dwell:</b> rule engine on tracked foot points — not a model.</li>
+        <li><b>Helmet / PPE:</b> pipeline ready; needs a custom-trained <code>ppe.pt</code>. Without evidence a person is “unknown”, never “no helmet”.</li>
+        <li><b>Not built:</b> clothing classification and identity recognition (by design).</li>
         <li>Proof of concept: no accuracy claim without evaluation on representative footage.</li>
         <li>Unique counts are per tracking session and can over- or under-count.</li>
       </ul>

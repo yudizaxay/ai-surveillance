@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Download, LayoutGrid, Plus, Search } from 'lucide-react'
+import { Download, LayoutGrid, Plus, Search, Send } from 'lucide-react'
 import { api } from './api'
 import { Donut, LineChart } from './charts'
 import { AboutPanel, CameraTile, CAT_COLORS, EventFeed, StatusBadge, TotalsPanel } from './components'
-import type { Camera, DetEvent, HealthInfo, HistoryPoint, Summary } from './types'
+import type { Camera, DetectorInfo, DetEvent, HealthInfo, HistoryPoint, Summary } from './types'
 
 const VEHICLES = ['car', 'truck', 'bus', 'motorcycle', 'bicycle']
 const sumOf = (c: Record<string, number> | undefined, keys: string[]) => keys.reduce((a, k) => a + (c?.[k] ?? 0), 0)
@@ -14,10 +14,11 @@ const CAT_NAME: Record<string, string> = {
 
 /* ------------------------------------------------------------------ LIVE */
 export function LivePage({
-  cameras, summary, events, loaded, cols, setCols, onAdd, onExpand, onError,
+  cameras, summary, events, loaded, cols, setCols, onAdd, onExpand, onError, readOnly,
 }: {
   cameras: Camera[]; summary: Summary; events: DetEvent[]; loaded: boolean
   cols: number; setCols: (n: number) => void; onAdd: () => void; onExpand: (id: string) => void; onError: (m: string) => void
+  readOnly: boolean
 }) {
   const auto = cameras.length <= 1 ? 1 : cameras.length <= 4 ? 2 : 3
   const grid = cols || auto
@@ -40,11 +41,11 @@ export function LivePage({
             <img src="/logo.svg" width={56} height={56} alt="" />
             <h3>No cameras connected</h3>
             <p>Add a webcam, sample video, uploaded clip or RTSP stream to start live detection.</p>
-            <button className="primary" onClick={onAdd}><Plus size={16} />Add your first camera</button>
+            {!readOnly && <button className="primary" onClick={onAdd}><Plus size={16} />Add your first camera</button>}
           </div>
         )}
         <div className="grid" style={{ gridTemplateColumns: `repeat(${grid}, minmax(0, 1fr))` }}>
-          {cameras.map((c) => <CameraTile key={c.id} cam={c} onExpand={() => onExpand(c.id)} onError={onError} />)}
+          {cameras.map((c) => <CameraTile key={c.id} cam={c} onExpand={() => onExpand(c.id)} onError={onError} readOnly={readOnly} />)}
         </div>
       </section>
       <aside className="side">
@@ -143,6 +144,8 @@ export function AnalyticsPage({ cameras, summary }: { cameras: Camera[]; summary
 /* ---------------------------------------------------------------- EVENTS */
 const TYPE_LABEL: Record<string, string> = {
   new_track: 'Detection', camera_online: 'Camera online', camera_offline: 'Camera offline', camera_error: 'Camera error',
+  zone_enter: 'Zone entry', zone_exit: 'Zone exit', line_cross: 'Line crossed', dwell: 'Dwell time',
+  capacity: 'Over capacity', fall: 'Possible fall', ppe_violation: 'No helmet',
 }
 
 export function EventsPage({ events, cameras }: { events: DetEvent[]; cameras: Camera[] }) {
@@ -180,19 +183,20 @@ export function EventsPage({ events, cameras }: { events: DetEvent[]; cameras: C
       <section className="panel">
         <div className="table-wrap tall">
           <table className="data">
-            <thead><tr><th>Time</th><th>Camera</th><th>Type</th><th>Detail</th><th>Track</th><th>Confidence</th></tr></thead>
+            <thead><tr><th>Time</th><th>Camera</th><th>Type</th><th>Detail</th><th>Zone / line</th><th>Track</th><th>Confidence</th></tr></thead>
             <tbody>
               {rows.slice(0, 300).map((e) => (
                 <tr key={e.id}>
                   <td className="mono">{new Date(e.ts * 1000).toLocaleString()}</td>
                   <td>{e.camera_name}</td>
                   <td><span className={`tag tag-${e.type}`}>{TYPE_LABEL[e.type] ?? e.type}</span></td>
-                  <td>{e.message}</td>
+                  <td>{e.severity === 'alert' && <span className="sev">ALERT </span>}{e.message}</td>
+                  <td>{e.zone ?? '—'}</td>
                   <td className="mono">{e.track_id != null ? `#${e.track_id}` : '—'}</td>
                   <td className="mono">{e.confidence != null ? `${Math.round(e.confidence * 100)}%` : '—'}</td>
                 </tr>
               ))}
-              {rows.length === 0 && <tr><td colSpan={6} className="muted">No events match</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={7} className="muted">No events match</td></tr>}
             </tbody>
           </table>
         </div>
@@ -202,7 +206,7 @@ export function EventsPage({ events, cameras }: { events: DetEvent[]; cameras: C
 }
 
 /* ---------------------------------------------------------------- SYSTEM */
-export function SystemPage({ cameras }: { cameras: Camera[] }) {
+export function SystemPage({ cameras, readOnly }: { cameras: Camera[]; readOnly: boolean }) {
   const [h, setH] = useState<HealthInfo | null>(null)
   useEffect(() => {
     const load = () => api.health().then(setH).catch(() => setH(null))
@@ -210,6 +214,21 @@ export function SystemPage({ cameras }: { cameras: Camera[] }) {
     const t = setInterval(load, 10000)
     return () => clearInterval(t)
   }, [])
+  const [det, setDet] = useState<DetectorInfo | null>(null)
+  const [detMsg, setDetMsg] = useState('')
+  useEffect(() => { api.detector().then(setDet).catch(() => {}) }, [])
+  const pickModel = async (file: string) => {
+    setDetMsg('Switching model — cameras restart in a few seconds…')
+    try { setDet(await api.setDetector(file)); setTimeout(() => setDetMsg(''), 6000) } catch (e) { setDetMsg((e as Error).message) }
+  }
+  const [hook, setHook] = useState<{ configured: boolean; host: string | null } | null>(null)
+  const [hookUrl, setHookUrl] = useState('')
+  const [hookMsg, setHookMsg] = useState('')
+  useEffect(() => { api.webhook().then(setHook).catch(() => {}) }, [])
+  const saveHook = async () => {
+    try { setHook(await api.setWebhook(hookUrl.trim())); setHookUrl(''); setHookMsg('Saved') } catch (e) { setHookMsg((e as Error).message) }
+  }
+  const testHook = async () => { try { await api.testWebhook(); setHookMsg('Test alert sent') } catch (e) { setHookMsg((e as Error).message) } }
   const up = h ? `${Math.floor(h.uptime / 3600)}h ${Math.floor((h.uptime % 3600) / 60)}m` : '—'
   return (
     <div className="page">
@@ -218,6 +237,9 @@ export function SystemPage({ cameras }: { cameras: Camera[] }) {
         <div className="card"><span>Service</span><b className={h ? 'ok' : 'bad'}>{h ? 'Online' : 'Offline'}</b><small>uptime {up}</small></div>
         <div className="card"><span>Inference device</span><b>{h?.device ?? '—'}</b><small>mps = Apple GPU · cuda = NVIDIA</small></div>
         <div className="card"><span>Object model</span><b className="small">{h?.model ?? '—'}</b><small>COCO pre-trained</small></div>
+        <div className="card"><span>Pose model</span><b className="small">{h?.pose_model ?? 'not installed'}</b><small>posture + fall check</small></div>
+        <div className="card"><span>PPE model</span><b className="small">{h?.ppe_model ?? 'not installed'}</b><small>custom-trained, optional</small></div>
+        <div className="card"><span>Login</span><b className="small">{h?.auth ? 'Enabled' : 'Off'}</b><small>{h?.auth ? 'admin + viewer roles' : 'set VM_ADMIN_PASSWORD'}</small></div>
         <div className="card"><span>Face model</span><b className="small">{h?.face_model ?? 'not loaded'}</b><small>detection only</small></div>
         <div className="card"><span>Tracker</span><b className="small">{h?.tracker ?? '—'}</b><small>persistent track IDs</small></div>
         <div className="card"><span>Cameras</span><b>{cameras.length}</b><small>{cameras.filter((c) => c.status === 'live').length} live</small></div>
@@ -231,14 +253,41 @@ export function SystemPage({ cameras }: { cameras: Camera[] }) {
               <tr><td>Person, vehicles, animals, bags</td><td><span className="tag tag-ok">Pre-trained</span></td></tr>
               <tr><td>Multi-object tracking &amp; unique counts</td><td><span className="tag tag-ok">Pre-trained</span></td></tr>
               <tr><td>Face detection (no identification)</td><td><span className="tag tag-ok">Pre-trained</span></td></tr>
-              <tr><td>Helmet / PPE detection</td><td><span className="tag tag-todo">Needs custom model</span></td></tr>
-              <tr><td>Pose &amp; activity recognition</td><td><span className="tag tag-todo">Roadmap</span></td></tr>
-              <tr><td>Zones &amp; line crossing</td><td><span className="tag tag-todo">Roadmap</span></td></tr>
+              <tr><td>Pose, posture &amp; possible-fall alerts</td><td><span className="tag tag-ok">Pre-trained + rules</span></td></tr>
+              <tr><td>Zones, line crossing, dwell, capacity</td><td><span className="tag tag-ok">Rule engine</span></td></tr>
+              <tr><td>Alerts, snapshots, clips, webhook</td><td><span className="tag tag-ok">Built in</span></td></tr>
+              <tr><td>Helmet / PPE detection</td><td><span className={`tag ${h?.ppe_model ? 'tag-ok' : 'tag-todo'}`}>{h?.ppe_model ? 'Model installed' : 'Needs custom model'}</span></td></tr>
+              <tr><td>Activity recognition (running, lifting)</td><td><span className="tag tag-todo">Roadmap</span></td></tr>
             </tbody>
           </table>
         </section>
         <AboutPanel />
       </div>
+      <section className="panel">
+        <div className="panel-head"><h3>Detection model</h3><span className="muted">speed vs accuracy</span></div>
+        <div className="model-pick">
+          {det?.options.map((o) => (
+            <button key={o.file} disabled={readOnly || !o.installed} className={det.current === o.file ? 'on' : ''} onClick={() => pickModel(o.file)}>
+              <b>{o.label}</b><code>{o.file}</code><small>{o.installed ? o.hint : 'Not installed — run backend/download_models.sh'}</small>
+            </button>
+          ))}
+        </div>
+        {detMsg && <p className="note">{detMsg}</p>}
+        <p className="note">Overhead (top-down) views are hard for COCO-trained models; larger models find noticeably more vehicles but run slower, especially with many cameras on one GPU.</p>
+      </section>
+      <section className="panel">
+        <div className="panel-head"><h3>Alert webhook</h3>
+          <span className="muted">{hook?.configured ? `Sending to ${hook.host}` : 'Not configured'}</span></div>
+        <p className="note">Alerts are POSTed as JSON (<code>text</code> + <code>event</code>), compatible with Slack-style incoming webhooks. The URL is stored on the server and never shown again.</p>
+        {readOnly ? <p className="muted">Admin rights are required to change this.</p> : (
+          <div className="hook-row">
+            <input value={hookUrl} onChange={(e) => setHookUrl(e.target.value)} placeholder="https://hooks.example.com/…" />
+            <button className="primary" onClick={saveHook}>{hookUrl.trim() ? 'Save' : 'Clear'}</button>
+            <button className="ghost" disabled={!hook?.configured} onClick={testHook}><Send size={14} />Send test</button>
+            {hookMsg && <span className="muted">{hookMsg}</span>}
+          </div>
+        )}
+      </section>
       <section className="panel">
         <div className="panel-head"><h3>Camera runtime</h3></div>
         <div className="table-wrap">

@@ -7,19 +7,21 @@ const EMPTY: Summary = {
 }
 
 /** Live stats + events from the backend WebSocket, with automatic reconnect. */
-export function useLive() {
+export function useLive(enabled: boolean, onAuthLost: () => void) {
   const [cameras, setCameras] = useState<Camera[]>([])
   const [summary, setSummary] = useState<Summary>(EMPTY)
   const [events, setEvents] = useState<DetEvent[]>([])
   const [connected, setConnected] = useState(false)
   const [loaded, setLoaded] = useState(false)
+  const [alertsUnacked, setAlertsUnacked] = useState(0)
   const retry = useRef(0)
 
   useEffect(() => {
-    api.events(60).then(setEvents).catch(() => {})
-  }, [])
+    if (enabled) api.events(60).then(setEvents).catch(() => {})
+  }, [enabled])
 
   useEffect(() => {
+    if (!enabled) return
     let ws: WebSocket | null = null
     let timer: number | undefined
     let closed = false
@@ -34,13 +36,15 @@ export function useLive() {
           setCameras(msg.cameras)
           setSummary(msg.summary)
           setLoaded(true)
+          if (typeof msg.alerts_unacked === 'number') setAlertsUnacked(msg.alerts_unacked)
         } else if (msg.type === 'event') {
           setEvents((prev) => [msg.event, ...prev].slice(0, 80))
         }
       }
-      ws.onclose = () => {
+      ws.onclose = (ev) => {
         setConnected(false)
         if (closed) return
+        if (ev.code === 4401) { onAuthLost(); return }
         retry.current += 1
         timer = window.setTimeout(open, Math.min(1000 * retry.current, 5000))
       }
@@ -48,7 +52,7 @@ export function useLive() {
     }
     open()
     return () => { closed = true; clearTimeout(timer); ws?.close() }
-  }, [])
+  }, [enabled]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { cameras, summary, events, connected, loaded }
+  return { cameras, summary, events, connected, loaded, alertsUnacked }
 }
