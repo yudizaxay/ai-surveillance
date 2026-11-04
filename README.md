@@ -97,15 +97,15 @@ The dashboard states the same on its **System** page.
 
 ## Quick start
 
-**Requirements:** [uv](https://docs.astral.sh/uv/) and Node.js 18+. Runs on Apple Silicon (MPS), NVIDIA (CUDA) or CPU.
+**Requirements:** [uv](https://docs.astral.sh/uv/), Node.js 18+, `git` and `ffmpeg` (ffmpeg is used for alert clips). Runs on Apple Silicon (MPS), NVIDIA (CUDA) or CPU. The first setup downloads about 0.6 GB of models and dependencies (YOLO weights, plus the CLIP text encoder used by search and “Detect anything”).
 
 ```bash
 git clone <this repo> && cd ai-surveillance
-./setup.sh      # Python 3.12 venv, dependencies, model weights, sample videos, npm install
+./setup.sh      # Python 3.12 venv, dependencies, model weights, sample videos, npm install (a few minutes)
 ./run.sh        # API on :8000, dashboard on :5173
 ```
 
-Open **<http://localhost:5173>**, click **Add camera**, and choose a sample video, a webcam or a stream URL.
+Open **<http://localhost:5173>**, click **Add camera**, and choose a sample video, a webcam or a stream URL. Try the **Search** page after switching on *Searchable footage* for a camera, and the *Detect anything* box in a camera's detail panel.
 
 <details>
 <summary>Manual setup</summary>
@@ -115,8 +115,8 @@ Open **<http://localhost:5173>**, click **Add camera**, and choose a sample vide
 cd backend
 uv venv --python 3.12 .venv
 uv pip install --python .venv/bin/python -r requirements.txt
-./download_models.sh        # YOLO11m + YOLO11n, YOLO11n-pose and YuNet into backend/models/
-WITH_XL=1 ./download_models.sh   # optional: also the most accurate model (yolo11x, ~110 MB)
+PY=.venv/bin/python ./download_models.sh   # YOLO11m/n, pose, YuNet, YOLO-World + CLIP into backend/models/
+PY=.venv/bin/python WITH_XL=1 ./download_models.sh   # optional: also the most accurate model (yolo11x, ~110 MB)
 ./download_samples.sh       # optional demo clips into backend/data/samples/
 .venv/bin/uvicorn app.main:app --port 8000
 
