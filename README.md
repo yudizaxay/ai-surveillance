@@ -252,7 +252,9 @@ Turn on **Weather & visibility** in a camera's detail panel. Every ~2 seconds th
 - **Fog vs smog:** a neutral grey-white veil is labelled fog; a warm yellow/brown veil is labelled smog / possible pollution.
 - **Calibration:** checked against a real foggy camera and against synthetic fog (scattering model) at several densities; the score falls steadily as fog thickens.
 
-What it is not: a distance in metres, and not an air-quality measurement. It cannot read PM2.5 / AQI, and a warm tint is only a hint of smog or dust. Use it on outdoor cameras with a view into the distance. Flat, texture-less scenes (an overhead view of plain asphalt, an empty sky) and indoor cameras give unreliable scores, which is why it is off by default. For real air quality, use a sensor or an air-quality API.
+A sharp foreground (frosty branches, a fence) can hide fog over the rest of the scene, so the score also looks at how much of the frame is flat, grey and bright (the veil); the worse of the two readings wins.
+
+What it is not: a distance in metres, and not an air-quality measurement. It cannot read PM2.5 / AQI, and a warm tint is only a hint of smog or dust. Use it on outdoor cameras with a view into the distance. An overcast grey sky, a flat grey overhead view of asphalt and indoor cameras can read as haze and give unreliable scores, which is why it is off by default. For real air quality, use a sensor or an air-quality API.
 
 ## Helmet / PPE
 

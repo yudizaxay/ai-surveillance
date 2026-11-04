@@ -28,6 +28,26 @@ def level_for(visibility: float) -> str:
     return "dense"
 
 
+def _veil_fraction(small: np.ndarray, gx: int = 8, gy: int = 6) -> float:
+    """Share of an 8x6 block grid that is smooth, nearly colourless and not dark: what fog or haze looks like.
+    Blue sky is excluded by its saturation; textured surfaces are excluded by their gradient."""
+    g = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY).astype(np.float32) / 255.0
+    sx, sy = cv2.Sobel(g, cv2.CV_32F, 1, 0), cv2.Sobel(g, cv2.CV_32F, 0, 1)
+    grad = np.sqrt(sx * sx + sy * sy)
+    hsv = cv2.cvtColor(small, cv2.COLOR_BGR2HSV).astype(np.float32)
+    sat, val = hsv[..., 1] / 255.0, hsv[..., 2] / 255.0
+    H, W = g.shape
+    bh, bw = max(1, H // gy), max(1, W // gx)
+    hit = n = 0
+    for i in range(gy):
+        for j in range(gx):
+            sl = (slice(i * bh, (i + 1) * bh), slice(j * bw, (j + 1) * bw))
+            n += 1
+            if grad[sl].mean() < 0.04 and sat[sl].mean() < 0.25 and val[sl].mean() > 0.25:
+                hit += 1
+    return hit / max(n, 1)
+
+
 def analyze(frame: np.ndarray) -> dict:
     """Return visibility (0-100, higher is clearer), level, kind and the raw metrics."""
     h, w = frame.shape[:2]
@@ -52,19 +72,24 @@ def analyze(frame: np.ndarray) -> dict:
         return {"visibility": None, "level": "night", "kind": "none", "dark": round(dark_mean, 3),
                 "contrast": round(contrast, 3), "edges": round(edges, 3), "tint": 0.0}
 
+    veil = _veil_fraction(small)
     haze = (
         0.25 * min(1.0, dark_mean / 0.60)
         + 0.35 * (1.0 - min(1.0, contrast / 0.50))
         + 0.40 * (1.0 - min(1.0, edges / 0.13))
     )
-    visibility = round(100 * (1.0 - min(1.0, max(0.0, haze))), 1)
+    visibility = 100 * (1.0 - min(1.0, max(0.0, haze)))
+    # A sharp foreground (frosty branches, a fence, a nearby tree) can hide fog that has swallowed the rest of the
+    # scene, so global averages read "clear". Haze is judged on the share of the image that is flat, grey and
+    # bright-ish (the veil) as well, and the worse of the two wins.
+    visibility = round(max(0.0, min(visibility, 100.0 - 170.0 * veil)), 1)
     level = level_for(visibility)
 
     # colour of the veil: look at the haziest (brightest-dark-channel) quarter of the image
-    veil = dark >= np.percentile(dark, 75)
+    veil_mask = dark >= np.percentile(dark, 75)
     lab = cv2.cvtColor(small, cv2.COLOR_BGR2LAB).astype(np.float32)
-    a_shift = float(lab[..., 1][veil].mean() - 128)
-    b_shift = float(lab[..., 2][veil].mean() - 128)
+    a_shift = float(lab[..., 1][veil_mask].mean() - 128)
+    b_shift = float(lab[..., 2][veil_mask].mean() - 128)
     warm = b_shift  # +b is yellow
     kind = "none"
     if level != "clear":
@@ -73,5 +98,5 @@ def analyze(frame: np.ndarray) -> dict:
     return {
         "visibility": visibility, "level": level, "kind": kind,
         "dark": round(dark_mean, 3), "contrast": round(contrast, 3), "edges": round(edges, 3),
-        "tint": round(warm, 1),
+        "veil": round(veil, 2), "tint": round(warm, 1),
     }
