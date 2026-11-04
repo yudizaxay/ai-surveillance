@@ -14,8 +14,9 @@ POSE_WEIGHTS = MODEL_DIR / "yolo11n-pose.pt"
 PPE_MODEL = MODEL_DIR / "ppe.pt"          # optional, custom-trained (not bundled)
 MEDIA_DIR = DATA_DIR / "media"
 EVAL_DIR = DATA_DIR / "eval"
+INDEX_DIR = DATA_DIR / "index"   # thumbnails for the searchable-footage index
 
-for _d in (DATA_DIR, UPLOAD_DIR, SAMPLE_DIR, MODEL_DIR, MEDIA_DIR, EVAL_DIR):
+for _d in (DATA_DIR, UPLOAD_DIR, SAMPLE_DIR, MODEL_DIR, MEDIA_DIR, EVAL_DIR, INDEX_DIR):
     _d.mkdir(parents=True, exist_ok=True)
 
 # COCO class id -> (label, category)

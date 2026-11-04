@@ -10,7 +10,7 @@ export interface Camera {
   latency_ms: number
   resolution: string
   settings: {
-    conf: number; faces: boolean; tracking: boolean; pose: boolean; ppe: boolean; atmosphere: boolean; health?: boolean | null; privacy?: boolean; custom?: string[]; custom_conf?: number
+    conf: number; faces: boolean; tracking: boolean; pose: boolean; ppe: boolean; atmosphere: boolean; health?: boolean | null; privacy?: boolean; index?: boolean; custom?: string[]; custom_conf?: number
     zones: Zone[]; lines: Line[]; model: string
   }
   model: string
@@ -18,6 +18,7 @@ export interface Camera {
   postures: Record<string, number>
   atmosphere?: Atmosphere | null
   health?: { enabled: boolean; state: 'ok' | 'frozen' | 'blocked' | 'blurred' | 'moved' | 'stalled' | 'off'; reconnects: number; frame_age: number; metrics: Record<string, number> }
+  index?: { enabled: boolean; error: string | null }
   custom?: { counts: Record<string, number>; loading: boolean; error: string | null }
   ppe: { helmet_yes: number; helmet_no: number; helmet_unknown: number }
   features: { pose_available: boolean; pose_error: string | null; ppe_available: boolean; ppe_error: string | null; world_available?: boolean }
@@ -140,3 +141,12 @@ export interface Atmosphere {
   dark: number; contrast: number; edges: number; tint: number
 }
 export interface AtmospherePoint { ts: number; visibility: number | null; level: string; kind: string }
+
+export interface SearchHit {
+  frame_id: number; score: number; ts: number; camera_id: string; camera_name: string; thumb: string
+  label: string | null; box: [number, number, number, number] | null
+}
+export interface SearchStatus {
+  available: boolean; frames: number; oldest: number | null; newest: number | null
+  indexing: string[]; every_s: number; max_frames: number
+}

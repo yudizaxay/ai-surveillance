@@ -18,7 +18,7 @@ from .config import (
 )
 from .media import ClipRecorder
 from . import atmosphere as atmo_mod
-from . import openvocab
+from . import openvocab, searchindex
 from .health import HealthMonitor
 from .pose import SKELETON, classify_posture, iou
 from .rules import RuleEngine, point_in_polygon
@@ -50,7 +50,7 @@ def pick_device() -> str:
 
 
 DEFAULT_SETTINGS = {
-    "conf": 0.25, "faces": True, "tracking": True, "pose": False, "ppe": False, "atmosphere": False, "health": None, "privacy": False, "custom": [], "custom_conf": 0.2, "zones": [], "lines": [],
+    "conf": 0.25, "faces": True, "tracking": True, "pose": False, "ppe": False, "atmosphere": False, "health": None, "privacy": False, "index": False, "custom": [], "custom_conf": 0.2, "zones": [], "lines": [],
     "model": "",   # "" = use the global detector (System page); otherwise a weights file such as yolo11x.pt
 }
 
@@ -126,6 +126,9 @@ class CameraWorker(threading.Thread):
         self._last_ppe: list[dict] = []
         self._frame_no = 0
         self.atmos: dict | None = None
+        self._index_t = 0.0
+        self._index_full: np.ndarray | None = None
+        self.index_error: str | None = None
         self.monitor = HealthMonitor()
         self.reconnects = 0
         self._last_frame_t = 0.0
@@ -175,6 +178,7 @@ class CameraWorker(threading.Thread):
             "ppe": dict(self.ppe_counts),
             "atmosphere": self.atmos if self.settings.get("atmosphere") else None,
             "health": self._health_snapshot(),
+            "index": {"enabled": bool(self.settings.get("index")), "error": self.index_error},
             "custom": {"counts": dict(self.custom_counts), "loading": self.custom_loading, "error": self.custom_error},
             "features": {
                 "pose_available": POSE_WEIGHTS.exists(), "pose_error": self.pose_error,
@@ -369,6 +373,7 @@ class CameraWorker(threading.Thread):
                 self._raw = frame.copy()
                 self.engine.update(dets, w, h)
                 self._update_stats(dets, shown_faces, w, h)
+                self._run_index(dets)
                 self._draw(frame, dets, shown_faces, w, h)
                 ok2, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
                 if ok2:
@@ -518,6 +523,24 @@ class CameraWorker(threading.Thread):
         for tid in [t for t in self._lying_since if t not in lying_ids]:
             del self._lying_since[tid]
         self.postures = counts
+
+    def _run_index(self, dets: list[dict]) -> None:
+        """Feed the searchable-footage index (a few CLIP embeddings every INDEX_EVERY seconds)."""
+        if not self.settings.get("index") or self._raw is None:
+            return
+        now = time.time()
+        if now - self._index_t < searchindex.INDEX_EVERY:
+            return
+        self._index_t = now
+        if not searchindex.available():
+            self.index_error = "Search model not installed (run backend/download_models.sh)"
+            return
+        try:
+            with _INFER_LOCK:
+                self._index_full = searchindex.index_frame(self.cam_id, self.name_, self._raw, dets, self._index_full)
+            self.index_error = None
+        except Exception as e:  # noqa: BLE001
+            self.index_error = f"Indexing failed: {e}"
 
     def _reconnect(self, cap):
         """Live source stopped delivering frames: retry with back-off instead of giving up (files never get here)."""

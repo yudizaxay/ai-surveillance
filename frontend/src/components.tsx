@@ -353,6 +353,10 @@ export function ExpandedView({
               <p className="note">Helmet: {cam.ppe?.helmet_yes ?? 0} yes · {cam.ppe?.helmet_no ?? 0} no · {cam.ppe?.helmet_unknown ?? 0} unknown (not enough evidence)</p>
             )}
             {st.atmosphere && <AtmospherePanel cam={cam} />}
+            <label className="toggle" title="Stores a small thumbnail and CLIP embedding every few seconds so you can search this camera in plain words on the Search page.">
+              <input type="checkbox" checked={st.index ?? false} disabled={readOnly}
+                onChange={(e) => patch({ index: e.target.checked })} /> Searchable footage (Search page)</label>
+            {cam.index?.error && st.index && <p className="note err">{cam.index.error}</p>}
             <label className="toggle" title="Pixelates faces (and the head of people whose face is not detected) before anything is streamed, saved or recorded.">
               <input type="checkbox" checked={st.privacy ?? false} disabled={readOnly}
                 onChange={(e) => patch({ privacy: e.target.checked })} /> Privacy mode (blur faces)</label>

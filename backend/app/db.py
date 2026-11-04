@@ -32,6 +32,16 @@ _conn.executescript(
     );
     CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts DESC);
     CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS frames (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, camera_id TEXT NOT NULL,
+        camera_name TEXT NOT NULL, thumb TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_frames_ts ON frames(ts DESC);
+    CREATE TABLE IF NOT EXISTS frame_emb (
+        frame_id INTEGER NOT NULL, kind TEXT NOT NULL, label TEXT,
+        x1 REAL, y1 REAL, x2 REAL, y2 REAL, emb BLOB NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_emb_frame ON frame_emb(frame_id);
     """
 )
 
@@ -152,3 +162,61 @@ def set_kv(key: str, value: str) -> None:
     with _lock:
         _conn.execute("INSERT OR REPLACE INTO kv(key,value) VALUES(?,?)", (key, value))
         _conn.commit()
+
+
+# ------------------------------------------------------------- search index
+def add_frame(ts: float, cam_id: str, cam_name: str, thumb: str, embs: list[tuple]) -> int:
+    """embs: (kind, label, x1, y1, x2, y2, float16 bytes) rows for this frame."""
+    with _lock:
+        cur = _conn.execute("INSERT INTO frames(ts,camera_id,camera_name,thumb) VALUES(?,?,?,?)", (ts, cam_id, cam_name, thumb))
+        fid = cur.lastrowid
+        _conn.executemany("INSERT INTO frame_emb(frame_id,kind,label,x1,y1,x2,y2,emb) VALUES(?,?,?,?,?,?,?,?)",
+                          [(fid, *e) for e in embs])
+        _conn.commit()
+        return fid
+
+
+def prune_frames(keep: int) -> list[str]:
+    """Delete the oldest indexed frames beyond `keep`; returns their thumbnail names so files can be removed."""
+    with _lock:
+        rows = _conn.execute("SELECT id, thumb FROM frames ORDER BY id DESC LIMIT -1 OFFSET ?", (keep,)).fetchall()
+        if not rows:
+            return []
+        ids = [r["id"] for r in rows]
+        marks = ",".join("?" * len(ids))
+        _conn.execute(f"DELETE FROM frame_emb WHERE frame_id IN ({marks})", ids)
+        _conn.execute(f"DELETE FROM frames WHERE id IN ({marks})", ids)
+        _conn.commit()
+        return [r["thumb"] for r in rows]
+
+
+def clear_index(camera_id: str | None = None) -> list[str]:
+    with _lock:
+        where, args = ("WHERE camera_id=?", (camera_id,)) if camera_id else ("", ())
+        rows = _conn.execute(f"SELECT id, thumb FROM frames {where}", args).fetchall()
+        ids = [r["id"] for r in rows]
+        for i in range(0, len(ids), 500):
+            chunk = ids[i:i + 500]
+            marks = ",".join("?" * len(chunk))
+            _conn.execute(f"DELETE FROM frame_emb WHERE frame_id IN ({marks})", chunk)
+            _conn.execute(f"DELETE FROM frames WHERE id IN ({marks})", chunk)
+        _conn.commit()
+        return [r["thumb"] for r in rows]
+
+
+def index_rows(since: float = 0.0, camera_id: str | None = None) -> list[sqlite3.Row]:
+    q = ("SELECT e.frame_id, e.kind, e.label, e.x1, e.y1, e.x2, e.y2, e.emb, f.ts, f.camera_id, f.camera_name, f.thumb "
+         "FROM frame_emb e JOIN frames f ON f.id = e.frame_id WHERE f.ts >= ?")
+    args: list = [since]
+    if camera_id:
+        q += " AND f.camera_id = ?"
+        args.append(camera_id)
+    with _lock:
+        return _conn.execute(q, args).fetchall()
+
+
+def index_stats() -> dict:
+    with _lock:
+        n = _conn.execute("SELECT COUNT(*) FROM frames").fetchone()[0]
+        span = _conn.execute("SELECT MIN(ts), MAX(ts) FROM frames").fetchone()
+    return {"frames": n, "oldest": span[0], "newest": span[1]}

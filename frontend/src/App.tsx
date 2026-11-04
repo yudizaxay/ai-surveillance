@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Activity, BellRing, FlaskConical, LayoutDashboard, ListChecks, LogOut, Plus, Server, WifiOff } from 'lucide-react'
+import { Activity, BellRing, FlaskConical, LayoutDashboard, ListChecks, LogOut, Plus, Search as SearchIcon, Server, WifiOff } from 'lucide-react'
 import { api } from './api'
 import { AddCameraModal, ExpandedView } from './components'
 import { AlertToast, AlertsPage, EvalPage, LoginScreen, beep } from './extra'
 import { AnalyticsPage, EventsPage, LivePage, SystemPage } from './pages'
 import type { AuthState, DetEvent } from './types'
 import { useLive } from './useLive'
+import { SearchPage } from './search'
 import { ZoneEditor } from './ZoneEditor'
 
-type View = 'live' | 'alerts' | 'analytics' | 'events' | 'evaluation' | 'system'
+type View = 'live' | 'search' | 'alerts' | 'analytics' | 'events' | 'evaluation' | 'system'
 const NAV: { id: View; label: string; icon: React.ReactNode }[] = [
   { id: 'live', label: 'Live monitor', icon: <LayoutDashboard size={18} /> },
+  { id: 'search', label: 'Search', icon: <SearchIcon size={18} /> },
   { id: 'alerts', label: 'Alerts', icon: <BellRing size={18} /> },
   { id: 'analytics', label: 'Analytics', icon: <Activity size={18} /> },
   { id: 'events', label: 'Events', icon: <ListChecks size={18} /> },
@@ -124,6 +126,7 @@ function Dashboard({ auth, onAuthLost, onLogout }: { auth: AuthState; onAuthLost
             <LivePage cameras={cameras} summary={summary} events={events} loaded={loaded} cols={cols} setCols={setCols}
               onAdd={() => setAdding(true)} onExpand={setExpandedId} onError={setToast} readOnly={readOnly} />
           )}
+          {view === 'search' && <SearchPage cameras={cameras} readOnly={readOnly} />}
           {view === 'alerts' && <AlertsPage live={events} cameras={cameras} readOnly={readOnly} muted={muted} setMuted={setMuted} />}
           {view === 'analytics' && <AnalyticsPage cameras={cameras} summary={summary} />}
           {view === 'events' && <EventsPage events={events} cameras={cameras} />}

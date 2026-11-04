@@ -1,4 +1,4 @@
-import type { AuthState, Camera, DetectorInfo, DetEvent, EvalResult, HealthInfo, HistoryPoint, Sample, Atmosphere, AtmospherePoint } from './types'
+import type { AuthState, Camera, DetectorInfo, DetEvent, EvalResult, HealthInfo, HistoryPoint, Sample, Atmosphere, AtmospherePoint, SearchHit, SearchStatus } from './types'
 
 async function j<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -52,6 +52,11 @@ export const api = {
   mediaUrl: (name: string) => `/api/media/${name}`,
   snapshotUrl: (id: string) => `/api/cameras/${id}/snapshot`,
   atmosphere: (id: string) => fetch(`/api/cameras/${id}/atmosphere`).then(j<{ current: Atmosphere | null; history: AtmospherePoint[] }>),
+  search: (q: string, camera_id: string, minutes: number) =>
+    fetch(`/api/search?q=${encodeURIComponent(q)}&limit=36${camera_id ? `&camera_id=${camera_id}` : ''}${minutes ? `&minutes=${minutes}` : ''}`).then(j<SearchHit[]>),
+  searchStatus: () => fetch('/api/search/status').then(j<SearchStatus>),
+  clearIndex: () => fetch('/api/search/index', { method: 'DELETE' }).then(j<{ removed: number }>),
+  indexUrl: (name: string) => `/api/index/${name}`,
   heatmapUrl: (id: string) => `/api/cameras/${id}/heatmap`,
   streamUrl: (id: string) => `/api/cameras/${id}/stream`,
 }

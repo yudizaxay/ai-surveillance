@@ -123,6 +123,9 @@ class CameraManager:
         if "pose" in patch:
             w.settings["pose"] = bool(patch["pose"])
             w.pose_error = None
+        if "index" in patch:
+            w.settings["index"] = bool(patch["index"])
+            w.index_error = None
         if "privacy" in patch:
             w.settings["privacy"] = bool(patch["privacy"])
         if "health" in patch:

@@ -361,3 +361,32 @@ em.hot, .count.hot { background: #5a1f24; border-color: #8a2f36; color: #ffb4b4;
 
 .chip.health-bad { background: rgba(255,92,92,.18); border-color: rgba(255,92,92,.5); color: #ff8a8a; }
 .chip.privacy { background: rgba(60,200,255,.14); border-color: rgba(60,200,255,.4); color: #8fdcff; }
+
+/* natural-language search */
+.search-page { display: flex; flex-direction: column; gap: 14px; }
+.search-box { padding: 14px 16px; }
+.search-box form { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.search-box form > svg { color: var(--muted); }
+.search-box input { flex: 1; min-width: 220px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; color: var(--text); font-size: 14px; }
+.search-box input:focus, .search-box select:focus { outline: none; border-color: var(--accent); }
+.search-box select { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; color: var(--text); }
+.examples { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.examples .chip { cursor: pointer; color: var(--muted); }
+.examples .chip:hover { color: var(--text); border-color: var(--accent); }
+.index-bar { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; flex-wrap: wrap; }
+.index-bar b { color: var(--text); }
+.index-actions { margin-left: auto; display: flex; gap: 6px; }
+.empty-search { text-align: center; padding: 48px 16px; color: var(--muted); }
+.empty-search p { color: var(--text); font-size: 15px; margin: 0 0 6px; }
+.hits { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.hit { margin: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; cursor: pointer; }
+.hit:hover { border-color: var(--accent); }
+.hit.weak { opacity: .55; }
+.hit-img { position: relative; background: #05070a; }
+.hit-img img { width: 100%; display: block; }
+.hit-img i { position: absolute; border: 2px solid #c85aff; border-radius: 3px; box-shadow: 0 0 0 1px rgba(0,0,0,.5); pointer-events: none; }
+.hit figcaption { padding: 8px 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; }
+.hit figcaption small { color: var(--muted); width: 100%; }
+.hit figcaption em { margin-left: auto; font-style: normal; font-size: 11px; color: var(--muted); }
+.hit.strong figcaption em { color: var(--ok, #3ddc84); }
+.hit-img.big { max-height: 70vh; overflow: hidden; border-radius: 8px; }

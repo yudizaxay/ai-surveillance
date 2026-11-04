@@ -20,7 +20,7 @@ from pydantic import BaseModel
 
 from . import auth, db, detector
 from .camera import pick_device
-from .config import BASE_DIR, EVAL_DIR, FACE_MODEL, MEDIA_DIR, POSE_WEIGHTS, SAMPLE_DIR, UPLOAD_DIR
+from .config import BASE_DIR, EVAL_DIR, FACE_MODEL, INDEX_DIR, MEDIA_DIR, POSE_WEIGHTS, SAMPLE_DIR, UPLOAD_DIR
 from .manager import CameraManager, discover_webcams
 from .ppe import available as ppe_available
 
@@ -163,6 +163,7 @@ class SettingsPatch(BaseModel):
     custom: list[str] | None = None
     health: bool | None = None
     privacy: bool | None = None
+    index: bool | None = None
     custom_conf: float | None = None
     model: str | None = None
     name: str | None = None
@@ -435,6 +436,45 @@ def report_csv():
                      e["severity"], e["label"], e["track_id"], e["zone"], e["confidence"], e["message"]])
     return Response(buf.getvalue(), media_type="text/csv",
                     headers={"Content-Disposition": "attachment; filename=detection_report.csv"})
+
+
+@app.get("/api/search")
+def search_footage(q: str, limit: int = 24, camera_id: str | None = None, minutes: int | None = None):
+    from . import searchindex
+    q = q.strip()[:200]
+    if not q:
+        raise HTTPException(400, "Type something to search for")
+    if not searchindex.available():
+        raise HTTPException(503, "Search model not installed (run backend/download_models.sh)")
+    try:
+        return searchindex.search(q, min(max(limit, 1), 60), camera_id, minutes)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(500, f"Search failed: {e}")
+
+
+@app.get("/api/search/status")
+def search_status():
+    from . import searchindex
+    cams = [w.snapshot() for w in manager.cameras.values()]
+    return {"available": searchindex.available(), **db.index_stats(),
+            "indexing": [c["id"] for c in cams if c["settings"].get("index")],
+            "every_s": searchindex.INDEX_EVERY, "max_frames": searchindex.MAX_FRAMES}
+
+
+@app.delete("/api/search/index")
+def search_clear(camera_id: str | None = None):
+    from . import searchindex
+    return {"removed": searchindex.clear(camera_id)}
+
+
+@app.get("/api/index/{name}")
+def index_thumb(name: str):
+    if not SAFE_NAME.match(name):
+        raise HTTPException(400, "bad name")
+    p = INDEX_DIR / name
+    if not p.is_file():
+        raise HTTPException(404, "not found")
+    return FileResponse(p, media_type="image/jpeg")
 
 
 @app.get("/api/report.html")

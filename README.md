@@ -26,7 +26,7 @@
 
 ## Contents
 
-[Features](#features) · [Screenshots](#screenshots) · [What is pre-trained](#what-is-pre-trained-and-what-is-not) · [Quick start](#quick-start) · [Using the dashboard](#using-the-dashboard) · [Zones, lines and alerts](#zones-lines-and-alerts) · [Models and performance](#models-and-performance) · [Detect anything](#detect-anything) · [Camera health](#camera-health-and-tamper) · [Privacy mode](#privacy-mode) · [Daily report](#daily-report) · [Weather & visibility](#weather-and-visibility-fog-haze-smog) · [Helmet / PPE](#helmet--ppe) · [Evaluation](#evaluation) · [Login and roles](#login-and-roles) · [Docker](#docker) · [Architecture](#architecture) · [API](#api) · [Configuration](#configuration) · [Project layout](#project-layout) · [Known limitations](#known-limitations) · [Privacy](#privacy-and-responsible-use) · [Roadmap](#roadmap)
+[Features](#features) · [Screenshots](#screenshots) · [What is pre-trained](#what-is-pre-trained-and-what-is-not) · [Quick start](#quick-start) · [Using the dashboard](#using-the-dashboard) · [Zones, lines and alerts](#zones-lines-and-alerts) · [Models and performance](#models-and-performance) · [Search](#natural-language-search) · [Detect anything](#detect-anything) · [Camera health](#camera-health-and-tamper) · [Privacy mode](#privacy-mode) · [Daily report](#daily-report) · [Weather & visibility](#weather-and-visibility-fog-haze-smog) · [Helmet / PPE](#helmet--ppe) · [Evaluation](#evaluation) · [Login and roles](#login-and-roles) · [Docker](#docker) · [Architecture](#architecture) · [API](#api) · [Configuration](#configuration) · [Project layout](#project-layout) · [Known limitations](#known-limitations) · [Privacy](#privacy-and-responsible-use) · [Roadmap](#roadmap)
 
 ## Features
 
@@ -41,6 +41,7 @@
 | **Alerts** | Rule-based alerts with a snapshot and a short video clip (before and after), a dashboard banner and sound, acknowledgement, and an optional Slack-compatible webhook. |
 | **Pose and posture** | Skeleton overlay, standing / sitting / bending / lying, and possible-fall alerts that explicitly ask for human review. |
 | **Heatmap** | Where people and vehicles spent time, per camera. |
+| **Natural-language search** | Search what the cameras have seen in plain words (“person in an orange vest”, “white car”). CLIP finds matching moments across cameras, with the matching object boxed. |
 | **Detect anything** | Type an object name (“forklift”, “hard hat”, “telescope dome”) and an open-vocabulary model (YOLO-World) finds it. No training, no fixed list of detectors. |
 | **Camera health & tamper** | Alerts when a camera freezes, is blocked, blurs or is moved, plus automatic reconnect with back-off for streams that drop. |
 | **Privacy mode** | Pixelates faces (and the head of people whose face is not detected) before frames are streamed, saved or recorded. |
@@ -192,6 +193,17 @@ Cameras share one accelerator and inference is serialised, so FPS per camera fal
 roughly 3–5 FPS per camera with four cameras on a laptop GPU using the Balanced model. Video files are dropped to
 real-time speed rather than played in slow motion. Pose runs on alternate frames.
 
+## Natural-language search
+
+Open **Search**, type what you want to find and press Enter. Turn on **Searchable footage** for a camera (or press **Index all cameras**) and every few seconds a small thumbnail of the frame, plus the crops of its largest detections, is embedded with CLIP and stored. A query is embedded with the same model and matched by similarity, so nothing has to be labelled in advance.
+
+<p align="center"><img src="docs/assets/search.png" alt="Search results for a person wearing an orange safety vest" width="860"></p>
+
+- **What it is good at:** colours, objects and scenes (“person in an orange vest”, “white car”, “stacks of plates”, “empty warehouse floor”). Results show the matching person or vehicle boxed, the camera and the time.
+- **Checked on the bundled clips:** “person wearing an orange safety vest” returns the Worker-Zone camera, “white car” and “bicycle” the road camera, “stacks of white plates” the store. A search takes well under a second.
+- **What it is not:** it does not read text, count things, or understand exact attributes. Scores are similarities, not probabilities, so weak matches are dimmed and labelled. Something nobody filmed still returns its closest look-alikes; check the picture.
+- **Storage and privacy:** only thumbnails (480 px) and 512-number embeddings are stored, the newest 4000 frames (`VM_INDEX_MAX_FRAMES`) at one per `VM_INDEX_EVERY` seconds (default 10) per camera. Indexing is opt-in per camera, uses the privacy-blurred frame when Privacy mode is on, and **Clear** deletes everything. Nearly identical frames are skipped.
+
 ## Detect anything
 
 In a camera's detail panel, open **Detect anything**, type an object (“forklift”, “fire extinguisher”, “hard hat”, “umbrella”, “telescope dome”) and press Add. The camera starts looking for it immediately; matches get violet boxes, a count chip and an event.
@@ -337,10 +349,11 @@ flowchart LR
 | POST | `/api/cameras` | Add `{name, kind: webcam\|file\|rtsp, source}` |
 | POST | `/api/cameras/upload` | Upload a video (multipart: `file`, `name`) |
 | POST | `/api/cameras/{id}/start` · `/stop` | Control a camera |
-| PATCH | `/api/cameras/{id}` | `{conf, faces, tracking, pose, ppe, atmosphere, health, privacy, custom, custom_conf, model, name, zones, lines}` |
+| PATCH | `/api/cameras/{id}` | `{conf, faces, tracking, pose, ppe, atmosphere, health, privacy, index, custom, custom_conf, model, name, zones, lines}` |
 | DELETE | `/api/cameras/{id}` | Remove a camera |
 | GET | `/api/cameras/{id}/stream` | MJPEG stream with overlays |
 | GET | `/api/cameras/{id}/snapshot[?raw=true]` | Latest frame (annotated, or clean for the zone editor) |
+| GET | `/api/search?q=…&camera_id=&minutes=` · `/api/search/status` · DELETE `/api/search/index` | Natural-language search, index status, clear index |
 | GET | `/api/report.html?hours=24` | Printable activity report |
 | GET | `/api/cameras/{id}/atmosphere` | Visibility index now + recent history |
 | GET | `/api/cameras/{id}/heatmap` · POST `…/heatmap/reset` | Heatmap image · reset |
@@ -362,6 +375,8 @@ Interactive docs are served at <http://localhost:8000/docs>.
 | Setting | Where | Default | Meaning |
 |---|---|---|---|
 | `VM_MODEL` | env | `yolo11m.pt` | Default detector weights (also switchable in the UI) |
+| `VM_INDEX_EVERY` | env | `10` | Seconds between indexed frames per camera (search) |
+| `VM_INDEX_MAX_FRAMES` | env | `4000` | Newest indexed frames kept for search |
 | `VM_DATA_DIR` | env | `backend/data` | Database, uploads, clips, evaluation results |
 | `VM_ADMIN_PASSWORD` etc. | env | unset | See [Login and roles](#login-and-roles) |
 | `UNCERTAIN_BELOW` | `backend/app/config.py` | `0.45` | Boxes below this confidence are drawn as uncertain |
