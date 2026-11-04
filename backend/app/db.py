@@ -112,6 +112,12 @@ def list_events(limit: int = 100, camera_id: str | None = None, severity: str | 
         return [dict(r) for r in _conn.execute(q, args).fetchall()]
 
 
+def events_since(since: float, limit: int = 20000) -> list[dict]:
+    with _lock:
+        rows = _conn.execute("SELECT * FROM events WHERE ts>=? ORDER BY ts DESC LIMIT ?", (since, limit)).fetchall()
+    return [dict(r) for r in rows]
+
+
 def event_summary() -> list[dict]:
     with _lock:
         rows = _conn.execute(

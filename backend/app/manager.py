@@ -123,9 +123,20 @@ class CameraManager:
         if "pose" in patch:
             w.settings["pose"] = bool(patch["pose"])
             w.pose_error = None
+        if "privacy" in patch:
+            w.settings["privacy"] = bool(patch["privacy"])
+        if "health" in patch:
+            w.settings["health"] = bool(patch["health"])
+            w.monitor.reset()
+        if "custom" in patch:
+            from . import openvocab
+            w.settings["custom"] = openvocab.clean_prompts(patch["custom"])
+            w.custom_error = None
+        if "custom_conf" in patch:
+            w.settings["custom_conf"] = min(0.9, max(0.05, float(patch["custom_conf"])))
         if "atmosphere" in patch:
             w.settings["atmosphere"] = bool(patch["atmosphere"])
-            w._atmos_ema, w._atmos_state, w._atmos_t = None, ("clear", "none"), 0.0
+            w._atmos_ema, w._atmos_state, w._atmos_t, w._atmos_level = None, ("clear", "none"), 0.0, "clear"
         if "ppe" in patch:
             w.settings["ppe"] = bool(patch["ppe"])
             w.ppe_error = None

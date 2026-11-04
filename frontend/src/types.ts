@@ -10,15 +10,17 @@ export interface Camera {
   latency_ms: number
   resolution: string
   settings: {
-    conf: number; faces: boolean; tracking: boolean; pose: boolean; ppe: boolean; atmosphere: boolean
+    conf: number; faces: boolean; tracking: boolean; pose: boolean; ppe: boolean; atmosphere: boolean; health?: boolean | null; privacy?: boolean; custom?: string[]; custom_conf?: number
     zones: Zone[]; lines: Line[]; model: string
   }
   model: string
   rules: { zones: Record<string, { occupancy: number; entries: number }>; lines: Record<string, { in: number; out: number }> }
   postures: Record<string, number>
   atmosphere?: Atmosphere | null
+  health?: { enabled: boolean; state: 'ok' | 'frozen' | 'blocked' | 'blurred' | 'moved' | 'stalled' | 'off'; reconnects: number; frame_age: number; metrics: Record<string, number> }
+  custom?: { counts: Record<string, number>; loading: boolean; error: string | null }
   ppe: { helmet_yes: number; helmet_no: number; helmet_unknown: number }
-  features: { pose_available: boolean; pose_error: string | null; ppe_available: boolean; ppe_error: string | null }
+  features: { pose_available: boolean; pose_error: string | null; ppe_available: boolean; ppe_error: string | null; world_available?: boolean }
   current: Counts
   unique: Counts
   detections_total: number

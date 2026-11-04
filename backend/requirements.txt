@@ -5,3 +5,6 @@ ultralytics>=8.3
 lapx>=0.5.11
 opencv-python>=4.9
 numpy
+ftfy
+regex
+clip @ git+https://github.com/ultralytics/CLIP.git   # text encoder for open-vocabulary detection

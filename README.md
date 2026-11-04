@@ -26,7 +26,7 @@
 
 ## Contents
 
-[Features](#features) · [Screenshots](#screenshots) · [What is pre-trained](#what-is-pre-trained-and-what-is-not) · [Quick start](#quick-start) · [Using the dashboard](#using-the-dashboard) · [Zones, lines and alerts](#zones-lines-and-alerts) · [Models and performance](#models-and-performance) · [Weather & visibility](#weather-and-visibility-fog-haze-smog) · [Helmet / PPE](#helmet--ppe) · [Evaluation](#evaluation) · [Login and roles](#login-and-roles) · [Docker](#docker) · [Architecture](#architecture) · [API](#api) · [Configuration](#configuration) · [Project layout](#project-layout) · [Known limitations](#known-limitations) · [Privacy](#privacy-and-responsible-use) · [Roadmap](#roadmap)
+[Features](#features) · [Screenshots](#screenshots) · [What is pre-trained](#what-is-pre-trained-and-what-is-not) · [Quick start](#quick-start) · [Using the dashboard](#using-the-dashboard) · [Zones, lines and alerts](#zones-lines-and-alerts) · [Models and performance](#models-and-performance) · [Detect anything](#detect-anything) · [Camera health](#camera-health-and-tamper) · [Privacy mode](#privacy-mode) · [Daily report](#daily-report) · [Weather & visibility](#weather-and-visibility-fog-haze-smog) · [Helmet / PPE](#helmet--ppe) · [Evaluation](#evaluation) · [Login and roles](#login-and-roles) · [Docker](#docker) · [Architecture](#architecture) · [API](#api) · [Configuration](#configuration) · [Project layout](#project-layout) · [Known limitations](#known-limitations) · [Privacy](#privacy-and-responsible-use) · [Roadmap](#roadmap)
 
 ## Features
 
@@ -41,6 +41,10 @@
 | **Alerts** | Rule-based alerts with a snapshot and a short video clip (before and after), a dashboard banner and sound, acknowledgement, and an optional Slack-compatible webhook. |
 | **Pose and posture** | Skeleton overlay, standing / sitting / bending / lying, and possible-fall alerts that explicitly ask for human review. |
 | **Heatmap** | Where people and vehicles spent time, per camera. |
+| **Detect anything** | Type an object name (“forklift”, “hard hat”, “telescope dome”) and an open-vocabulary model (YOLO-World) finds it. No training, no fixed list of detectors. |
+| **Camera health & tamper** | Alerts when a camera freezes, is blocked, blurs or is moved, plus automatic reconnect with back-off for streams that drop. |
+| **Privacy mode** | Pixelates faces (and the head of people whose face is not detected) before frames are streamed, saved or recorded. |
+| **Daily report** | One-click HTML report (print to PDF) with activity per hour, detections per camera, alerts and snapshots. |
 | **Weather & visibility** | Optional per-camera fog / haze / smog estimate (0-100 visibility index) with alerts. No model needed. |
 | **Face detection** | Locates faces and landmarks only. **No identity recognition.** |
 | **Helmet / PPE pipeline** | Ready for a custom-trained model. Reports `unknown` rather than guessing. No model is bundled. |
@@ -81,6 +85,8 @@ The dashboard is responsive: the sidebar collapses to icons on tablets and to a 
 | Face detection | Pre-trained YuNet |
 | Pose and posture | Pre-trained YOLO11-pose keypoints + rule-based posture |
 | Zones, line crossing, dwell, capacity, alerts | Rule engine (not a model) |
+| Detect anything by typing | Pre-trained YOLO-World (zero-shot, open vocabulary); less accurate than a trained model |
+| Camera health, fog / haze, privacy blur | Image statistics and the face detector (no extra model) |
 | Helmet / PPE | **No model bundled.** Pipeline and training script included; needs your own labelled data |
 | Clothing / covering categories | **Intentionally not built** (sensitive attribute) |
 | Identity / face recognition | **Intentionally not built** |
@@ -185,6 +191,44 @@ overhead camera on *Most accurate* and the rest on *Balanced*). Switching restar
 Cameras share one accelerator and inference is serialised, so FPS per camera falls as cameras are added. Expect
 roughly 3–5 FPS per camera with four cameras on a laptop GPU using the Balanced model. Video files are dropped to
 real-time speed rather than played in slow motion. Pose runs on alternate frames.
+
+## Detect anything
+
+In a camera's detail panel, open **Detect anything**, type an object (“forklift”, “fire extinguisher”, “hard hat”, “umbrella”, “telescope dome”) and press Add. The camera starts looking for it immediately; matches get violet boxes, a count chip and an event.
+
+<p align="center"><img src="docs/assets/detect-anything.png" alt="Open-vocabulary detection of a typed object" width="860"></p>
+
+- **How:** YOLO-World turns the typed text into CLIP embeddings once, then runs as fast as a normal detector (about every third frame). Up to 8 phrases per camera, with their own confidence slider.
+- **Why it matters:** fixed detector lists (people, cars, PPE…) cannot find something nobody trained for. This can.
+- **Honest limits:** it is zero-shot, so it misses more and is less precise than a model trained on the object. Short concrete nouns work best; abstract phrases do not. Cluttered scenes (plates on a shelf) can defeat it. Verify before relying on it.
+- **Setup:** `backend/download_models.sh` fetches the ~25 MB detector and the ~340 MB CLIP text encoder once.
+
+## Camera health and tamper
+
+Always on for live sources (webcam, RTSP / HTTP); off by default for looping video files, which would look “frozen” or “moved”. Every ~2 s the frame is checked for:
+
+| State | Meaning |
+|---|---|
+| **frozen** | the source keeps sending the identical picture |
+| **blocked** | the lens is covered, or the image is black / completely flat |
+| **blurred** | sharpness collapsed against the camera's own recent baseline |
+| **moved** | the scene no longer matches the baseline (camera knocked or turned) |
+
+An alert (with snapshot and clip) fires after repeated readings, and a recovery event when it clears. If a stream stops delivering frames, the camera **reconnects automatically** with growing delays and reports each attempt. Credentials in stream URLs are masked in alerts and reports.
+
+Limits: “blurred” and “moved” need about a minute of healthy video to learn a baseline, and a large legitimate change (lights off, a bus parked in front of the camera) can look like tampering.
+
+## Privacy mode
+
+Turn on **Privacy mode** per camera. Faces are pixelated before the frame is drawn, streamed, stored as a snapshot or recorded in a clip, so nothing un-blurred leaves the pipeline. If a person's face is not detected (turned away, far, small), the head region of the person box is pixelated instead.
+
+It is best effort: a face that neither detector finds is not covered, so do not treat it as a guarantee of anonymisation.
+
+## Daily report
+
+**Events → Daily report** opens a self-contained HTML page for the last 24 h (`/api/report.html?hours=1..168`): key numbers, activity per hour, detections per camera, alerts by type, camera health and the latest alerts with snapshots. Use **Print / Save as PDF** in the browser for a PDF.
+
+<p align="center"><img src="docs/assets/daily-report.png" alt="Daily report" width="640"></p>
 
 ## Weather and visibility (fog, haze, smog)
 
@@ -293,10 +337,11 @@ flowchart LR
 | POST | `/api/cameras` | Add `{name, kind: webcam\|file\|rtsp, source}` |
 | POST | `/api/cameras/upload` | Upload a video (multipart: `file`, `name`) |
 | POST | `/api/cameras/{id}/start` · `/stop` | Control a camera |
-| PATCH | `/api/cameras/{id}` | `{conf, faces, tracking, pose, ppe, model, name, zones, lines}` |
+| PATCH | `/api/cameras/{id}` | `{conf, faces, tracking, pose, ppe, atmosphere, health, privacy, custom, custom_conf, model, name, zones, lines}` |
 | DELETE | `/api/cameras/{id}` | Remove a camera |
 | GET | `/api/cameras/{id}/stream` | MJPEG stream with overlays |
 | GET | `/api/cameras/{id}/snapshot[?raw=true]` | Latest frame (annotated, or clean for the zone editor) |
+| GET | `/api/report.html?hours=24` | Printable activity report |
 | GET | `/api/cameras/{id}/atmosphere` | Visibility index now + recent history |
 | GET | `/api/cameras/{id}/heatmap` · POST `…/heatmap/reset` | Heatmap image · reset |
 | GET | `/api/discover` · `/api/samples` | Local webcams · sample clips |

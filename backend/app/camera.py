@@ -1,6 +1,7 @@
 """One worker thread per camera: capture -> YOLO + ByteTrack -> faces/pose/PPE -> rules -> overlay -> JPEG."""
 from __future__ import annotations
 
+import re
 import threading
 import time
 from collections import defaultdict, deque
@@ -17,6 +18,8 @@ from .config import (
 )
 from .media import ClipRecorder
 from . import atmosphere as atmo_mod
+from . import openvocab
+from .health import HealthMonitor
 from .pose import SKELETON, classify_posture, iou
 from .rules import RuleEngine, point_in_polygon
 
@@ -47,9 +50,14 @@ def pick_device() -> str:
 
 
 DEFAULT_SETTINGS = {
-    "conf": 0.25, "faces": True, "tracking": True, "pose": False, "ppe": False, "atmosphere": False, "zones": [], "lines": [],
+    "conf": 0.25, "faces": True, "tracking": True, "pose": False, "ppe": False, "atmosphere": False, "health": None, "privacy": False, "custom": [], "custom_conf": 0.2, "zones": [], "lines": [],
     "model": "",   # "" = use the global detector (System page); otherwise a weights file such as yolo11x.pt
 }
+
+
+def mask_url(url: str) -> str:
+    """Hide credentials in a stream URL (rtsp://user:pass@host -> rtsp://***@host) before it reaches logs, alerts or reports."""
+    return re.sub(r"(?<=://)[^/@\s]+(?::[^/@\s]*)?@", "***@", url or "")
 
 
 def hex_to_bgr(h: str) -> tuple[int, int, int]:
@@ -118,9 +126,21 @@ class CameraWorker(threading.Thread):
         self._last_ppe: list[dict] = []
         self._frame_no = 0
         self.atmos: dict | None = None
+        self.monitor = HealthMonitor()
+        self.reconnects = 0
+        self._last_frame_t = 0.0
+        self._world = None
+        self._world_key: tuple[str, ...] = ()
+        self.custom_error: str | None = None
+        self.custom_loading = False
+        self._last_custom: list[dict] = []
+        self.custom_counts: dict[str, int] = {}
+        self._custom_seen: dict[str, float] = {}
         self._atmos_hist: deque = deque(maxlen=300)
         self._atmos_t = 0.0
         self._atmos_ema: float | None = None
+        self._atmos_level = "clear"
+        self._atmos_alert_t = 0.0
         self._atmos_state = ("clear", "none")       # confirmed (level, kind)
         self._atmos_pending: tuple[tuple[str, str], int] = (("clear", "none"), 0)
 
@@ -154,11 +174,26 @@ class CameraWorker(threading.Thread):
             "postures": dict(self.postures),
             "ppe": dict(self.ppe_counts),
             "atmosphere": self.atmos if self.settings.get("atmosphere") else None,
+            "health": self._health_snapshot(),
+            "custom": {"counts": dict(self.custom_counts), "loading": self.custom_loading, "error": self.custom_error},
             "features": {
                 "pose_available": POSE_WEIGHTS.exists(), "pose_error": self.pose_error,
                 "ppe_available": ppe_mod.available(), "ppe_error": self.ppe_error,
+                "world_available": openvocab.available(),
             },
         }
+
+    def health_enabled(self) -> bool:
+        v = self.settings.get("health")
+        return (self.kind != "file") if v is None else bool(v)   # looping files would look "frozen" or "moved"
+
+    def _health_snapshot(self) -> dict:
+        age = time.time() - self._last_frame_t if self._last_frame_t and self.status == "live" else 0.0
+        state = self.monitor.confirmed if self.health_enabled() else "off"
+        if state == "ok" and age > 8:
+            state = "stalled"
+        return {"enabled": self.health_enabled(), "state": state, "reconnects": self.reconnects,
+                "frame_age": round(age, 1), "metrics": self.monitor.metrics}
 
     def atmosphere_history(self) -> list[dict]:
         return list(self._atmos_hist)
@@ -214,7 +249,7 @@ class CameraWorker(threading.Thread):
         if not cap.isOpened():
             raise RuntimeError(
                 "Could not open webcam (check camera permission for your terminal)"
-                if self.kind == "webcam" else f"Could not open source: {self.source}"
+                if self.kind == "webcam" else f"Could not open source: {mask_url(self.source)}"
             )
         return cap
 
@@ -288,10 +323,15 @@ class CameraWorker(threading.Thread):
                         continue
                     fail += 1
                     if fail > 30:
-                        raise RuntimeError("Stream lost (no frames received)")
+                        cap = self._reconnect(cap)
+                        if cap is None:
+                            break
+                        fail = 0
+                        continue
                     time.sleep(0.05)
                     continue
                 fail = 0
+                self._last_frame_t = time.time()
 
                 # downscale for speed / bandwidth
                 h, w = frame.shape[:2]
@@ -307,7 +347,8 @@ class CameraWorker(threading.Thread):
                     self._load_detector()
                 self._ensure_optional()
                 dets = self._detect(frame)
-                faces = self._faces(frame) if self.settings.get("faces") else []
+                privacy = bool(self.settings.get("privacy"))
+                faces = self._faces(frame) if (self.settings.get("faces") or privacy) else []
                 if self._pose is not None and self.settings.get("pose"):
                     self._run_pose(frame, dets)
                 else:
@@ -317,13 +358,18 @@ class CameraWorker(threading.Thread):
                 else:
                     self.ppe_counts, self._last_ppe = dict(NO_PPE), []
                 self._run_atmosphere(frame)
+                self._run_health(frame)
+                self._run_custom(frame)
                 lat = (time.time() - t0) * 1000
                 self.latency_ms = 0.8 * self.latency_ms + 0.2 * lat if self.latency_ms else lat
 
+                if privacy:   # anonymise before anything is stored or streamed: snapshots, clips and the live view
+                    self._anonymise(frame, faces, dets)
+                shown_faces = faces if self.settings.get("faces") else []
                 self._raw = frame.copy()
                 self.engine.update(dets, w, h)
-                self._update_stats(dets, faces, w, h)
-                self._draw(frame, dets, faces, w, h)
+                self._update_stats(dets, shown_faces, w, h)
+                self._draw(frame, dets, shown_faces, w, h)
                 ok2, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
                 if ok2:
                     jpg = buf.tobytes()
@@ -410,6 +456,32 @@ class CameraWorker(threading.Thread):
                             "lm": f[4:14].reshape(5, 2)})
         return out
 
+    @staticmethod
+    def _pixelate(frame: np.ndarray, x1: int, y1: int, x2: int, y2: int) -> None:
+        h, w = frame.shape[:2]
+        x1, y1, x2, y2 = max(0, x1), max(0, y1), min(w, x2), min(h, y2)
+        if x2 - x1 < 4 or y2 - y1 < 4:
+            return
+        roi = frame[y1:y2, x1:x2]
+        small = cv2.resize(roi, (max(2, (x2 - x1) // 14), max(2, (y2 - y1) // 14)), interpolation=cv2.INTER_AREA)
+        frame[y1:y2, x1:x2] = cv2.resize(small, (x2 - x1, y2 - y1), interpolation=cv2.INTER_NEAREST)
+
+    def _anonymise(self, frame: np.ndarray, faces: list[dict], dets: list[dict]) -> None:
+        """Pixelate every detected face. If a person has no detected face (turned away, small, far), their head
+        region is pixelated instead. Best effort: a face the detectors miss is not covered."""
+        for f in faces:
+            x1, y1, x2, y2 = f["box"]
+            pw, ph = (x2 - x1) * 0.3, (y2 - y1) * 0.3
+            self._pixelate(frame, int(x1 - pw), int(y1 - ph), int(x2 + pw), int(y2 + ph))
+        for d in dets:
+            if d["cat"] != "person":
+                continue
+            x1, y1, x2, y2 = d["box"]
+            if any(x1 <= (f["box"][0] + f["box"][2]) / 2 <= x2 and y1 <= (f["box"][1] + f["box"][3]) / 2 <= y2 for f in faces):
+                continue
+            bw, bh = x2 - x1, y2 - y1
+            self._pixelate(frame, int(x1 + 0.15 * bw), int(y1), int(x2 - 0.15 * bw), int(y1 + 0.24 * bh))
+
     def _run_pose(self, frame: np.ndarray, dets: list[dict]) -> None:
         """Pose runs on odd frames (result reused on even ones); posture is matched to tracked people."""
         if self._frame_no % 2 == 1:
@@ -447,6 +519,100 @@ class CameraWorker(threading.Thread):
             del self._lying_since[tid]
         self.postures = counts
 
+    def _reconnect(self, cap):
+        """Live source stopped delivering frames: retry with back-off instead of giving up (files never get here)."""
+        cap.release()
+        self.reconnects += 1
+        self.status = "starting"
+        self._emit(type="camera_reconnecting", severity="alert",
+                   message=f"{self.name_}: stream lost, reconnecting (attempt {self.reconnects})")
+        delay = 2.0
+        for _ in range(12):
+            if self._stop_evt.wait(delay):
+                return None
+            try:
+                new = self._open()
+                self.status = "live"
+                self._reset_tracker()
+                self.monitor.reset()
+                self._emit(type="camera_online", message=f"{self.name_} reconnected")
+                return new
+            except Exception:  # noqa: BLE001 - keep trying with a longer delay
+                delay = min(delay * 1.7, 30.0)
+        raise RuntimeError("Stream lost and could not be re-opened")
+
+    def _run_health(self, frame: np.ndarray) -> None:
+        if not self.health_enabled():
+            self.monitor.reset()
+            return
+        r = self.monitor.update(frame, time.time())
+        if not r or not r[1]:
+            return
+        state = r[0]
+        label = {"frozen": "image frozen (same picture repeating)", "blocked": "view blocked or black",
+                 "blurred": "image blurred / out of focus", "moved": "camera view changed (moved or knocked)"}
+        if state == "ok":
+            self._emit(type="camera_tamper_clear", label="camera", message=f"{self.name_}: camera health back to normal")
+        else:
+            self._emit(type="camera_tamper", label="camera", severity="alert", capture=True,
+                       message=f"{self.name_}: {label[state]}")
+
+    def _run_custom(self, frame: np.ndarray) -> None:
+        """Detect user-typed objects (open vocabulary) every third frame and keep the last result in between."""
+        prompts = tuple(openvocab.clean_prompts(self.settings.get("custom")))
+        if not prompts:
+            self._last_custom, self.custom_counts, self._world, self._world_key = [], {}, None, ()
+            self.custom_error = None
+            return
+        if not openvocab.available():
+            self.custom_error = "Open-vocabulary model not installed (run backend/download_models.sh)"
+            return
+        if self._world_key != prompts:
+            self.custom_loading, self.custom_error = True, None
+            try:
+                self._world = openvocab.get(prompts)
+                self._world_key = prompts
+            except Exception as e:  # noqa: BLE001
+                self.custom_error = f"Open-vocabulary model failed to load: {e}"
+                self._world, self._world_key = None, prompts   # do not retry every frame
+            finally:
+                self.custom_loading = False
+            self._last_custom, self.custom_counts = [], {}
+        if self._world is None or self._frame_no % 3 != 0:
+            return
+        conf = float(self.settings.get("custom_conf", 0.2))
+        with _INFER_LOCK:
+            res = self._world.predict(frame, conf=conf, imgsz=640, verbose=False, device=pick_device())[0]
+        found: list[dict] = []
+        if res.boxes is not None and len(res.boxes):
+            for b, c, k in zip(res.boxes.xyxy.cpu().numpy(), res.boxes.conf.cpu().numpy(),
+                               res.boxes.cls.cpu().numpy().astype(int)):
+                found.append({"box": b, "conf": float(c), "name": prompts[int(k)] if int(k) < len(prompts) else "?"})
+        self._last_custom = found
+        counts = {p: 0 for p in prompts}
+        for f in found:
+            counts[f["name"]] = counts.get(f["name"], 0) + 1
+        self.custom_counts = counts
+        now = time.time()
+        for name, n in counts.items():   # one info event the first time an object shows up (30 s cooldown)
+            if n and now - self._custom_seen.get(name, 0) > 30:
+                self._emit(type="custom_detect", label=name, message=f"{self.name_}: “{name}” detected ({n})",
+                           confidence=round(max(f["conf"] for f in found if f["name"] == name), 2))
+            if n:
+                self._custom_seen[name] = now
+
+    def _stable_level(self, vis: float) -> str:
+        """Level with hysteresis: a score hovering on a threshold must move 3 points past it to change level."""
+        order = atmo_mod.LEVELS            # clear, hazy, foggy, dense (best -> worst)
+        cur = self._atmos_level
+        cand = atmo_mod.level_for(vis)
+        if cand != cur:
+            worse = order.index(cand) > order.index(cur)
+            if atmo_mod.level_for(vis + 3 if worse else vis - 3) != cand:
+                cand = cur
+        self._atmos_level = cand
+        return cand
+
     def _run_atmosphere(self, frame: np.ndarray) -> None:
         """Fog / haze / smog estimate every ~2 s; alert only after 3 consistent readings (no flicker)."""
         if not self.settings.get("atmosphere"):
@@ -460,7 +626,7 @@ class CameraWorker(threading.Thread):
         if r["visibility"] is not None:   # smooth the score; "night" readings are reported but not smoothed
             self._atmos_ema = r["visibility"] if self._atmos_ema is None else 0.6 * self._atmos_ema + 0.4 * r["visibility"]
             r["visibility"] = round(self._atmos_ema, 1)
-            r["level"] = atmo_mod.level_for(self._atmos_ema)
+            r["level"] = self._stable_level(self._atmos_ema)
             if r["level"] == "clear":
                 r["kind"] = "none"
         self.atmos = r
@@ -481,11 +647,12 @@ class CameraWorker(threading.Thread):
         if level == "clear":
             if prev[0] != "clear":
                 self._emit(type="visibility_clear", label="visibility", message=f"{self.name_}: visibility back to clear")
-        elif level in ("foggy", "dense"):
+        elif level in ("foggy", "dense") and (level == "dense" or now - self._atmos_alert_t > 900):
+            self._atmos_alert_t = now   # at most one fog alert per 15 min, except when it gets dense
             self._emit(type="visibility", label="visibility", severity="alert", capture=True,
                        confidence=round(r["visibility"] / 100, 2),
                        message=f"{self.name_}: {level} {what}, visibility index {r['visibility']:.0f}/100")
-        else:
+        elif level == "hazy":
             self._emit(type="visibility", label="visibility", confidence=round(r["visibility"] / 100, 2),
                        message=f"{self.name_}: hazy {what}, visibility index {r['visibility']:.0f}/100")
 
@@ -566,6 +733,15 @@ class CameraWorker(threading.Thread):
                 (tw2, th2), _ = cv2.getTextSize(txt, cv2.FONT_HERSHEY_SIMPLEX, 0.42, 1)
                 cv2.rectangle(frame, (x1, y2), (x1 + tw2 + 6, y2 + th2 + 6), c2, -1)
                 cv2.putText(frame, txt, (x1 + 3, y2 + th2 + 2), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (255, 255, 255), 1, cv2.LINE_AA)
+        for f in self._last_custom:   # user-typed (open-vocabulary) objects, drawn in violet
+            x1, y1, x2, y2 = f["box"].astype(int)
+            col = (255, 90, 200)
+            cv2.rectangle(frame, (x1, y1), (x2, y2), col, 2)
+            tag = f"{f['name']} {f['conf']:.2f}"
+            (tw, th), _ = cv2.getTextSize(tag, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1)
+            ty = max(y1, th + 6)
+            cv2.rectangle(frame, (x1, ty - th - 6), (x1 + tw + 6, ty), col, -1)
+            cv2.putText(frame, tag, (x1 + 3, ty - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (10, 10, 10), 1, cv2.LINE_AA)
         for pz in self._last_pose:
             kp = pz["kp"]
             for a, b in SKELETON:

@@ -6,7 +6,7 @@ command -v uv >/dev/null || { echo "Install uv first: https://docs.astral.sh/uv/
 cd backend
 uv venv --python 3.12 .venv
 uv pip install --python .venv/bin/python -r requirements.txt
-./download_models.sh
+PY=.venv/bin/python ./download_models.sh
 ./download_samples.sh
 cd ../frontend && npm install
 echo "Setup complete. Run ./run.sh"

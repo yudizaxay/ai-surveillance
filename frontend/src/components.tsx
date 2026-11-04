@@ -44,6 +44,51 @@ export function LiveFrame({ id, alt, fast = false }: { id: string; alt: string; 
   return src ? <img src={src} alt={alt} /> : <div className="tile-placeholder"><div className="spinner" /></div>
 }
 
+/** "Detect anything": type an object name and an open-vocabulary model looks for it (no training). */
+function CustomObjects({ cam, st, readOnly, patch }: { cam: Camera; st: Camera['settings']; readOnly: boolean; patch: (p: Record<string, unknown>) => void }) {
+  const [text, setText] = useState('')
+  const prompts = st.custom ?? []
+  const [conf, setConf] = useState(st.custom_conf ?? 0.2)
+  const available = cam.features.world_available !== false
+  const add = () => {
+    const v = text.trim().toLowerCase()
+    if (!v || prompts.includes(v) || prompts.length >= 8) return
+    patch({ custom: [...prompts, v] }); setText('')
+  }
+  return (
+    <div className="custom-box">
+      <h4>Detect anything <small>· type an object</small></h4>
+      {!available && <p className="note err">Model not installed. Run backend/download_models.sh</p>}
+      {!readOnly && (
+        <form className="custom-add" onSubmit={(e) => { e.preventDefault(); add() }}>
+          <input value={text} maxLength={40} disabled={!available || prompts.length >= 8}
+            placeholder="e.g. forklift, hard hat, umbrella" onChange={(e) => setText(e.target.value)} />
+          <button className="ghost" type="submit" disabled={!text.trim() || !available}><Plus size={14} />Add</button>
+        </form>
+      )}
+      {prompts.length > 0 && (
+        <div className="custom-chips">
+          {prompts.map((p) => (
+            <span key={p} className="chip custom">{p} <b>{cam.custom?.counts?.[p] ?? 0}</b>
+              {!readOnly && <button title={`Remove ${p}`} onClick={() => patch({ custom: prompts.filter((x) => x !== p) })}><X size={11} /></button>}
+            </span>
+          ))}
+        </div>
+      )}
+      {cam.custom?.loading && <p className="note"><span className="spinner sm" /> Loading open-vocabulary model…</p>}
+      {cam.custom?.error && <p className="note err">{cam.custom.error}</p>}
+      {prompts.length > 0 && (
+        <label className="field">Custom confidence <b>{conf.toFixed(2)}</b>
+          <input type="range" min={0.05} max={0.8} step={0.05} value={conf} disabled={readOnly}
+            onChange={(e) => setConf(+e.target.value)} onMouseUp={() => patch({ custom_conf: conf })}
+            onTouchEnd={() => patch({ custom_conf: conf })} onKeyUp={() => patch({ custom_conf: conf })} />
+        </label>
+      )}
+      <p className="note">Zero-shot: no training, so it is less accurate than the built-in classes. Short, concrete nouns work best. Violet boxes in the video.</p>
+    </div>
+  )
+}
+
 /** Visibility index, level and a short trend for one camera. */
 function AtmospherePanel({ cam }: { cam: Camera }) {
   const [hist, setHist] = useState<AtmospherePoint[]>([])
@@ -178,6 +223,13 @@ export function CameraTile({
               <i style={{ background: '#3cc8ff', borderRadius: 2, height: 3 }} />{l.name} <b>↓{cam.rules?.lines[l.id]?.in ?? 0}</b> <b>↑{cam.rules?.lines[l.id]?.out ?? 0}</b>
             </span>
           ))}
+          {cam.settings.privacy && <span className="chip privacy">Privacy</span>}
+          {cam.health && !['ok', 'off'].includes(cam.health.state) && (
+            <span className="chip health-bad">{{ frozen: 'Frozen', blocked: 'Blocked', blurred: 'Blurred', moved: 'Moved', stalled: 'No frames' }[cam.health.state as string]}</span>
+          )}
+          {Object.entries(cam.custom?.counts ?? {}).filter(([, n]) => n > 0).map(([name, n]) => (
+            <span key={name} className="chip custom">{name} <b>{n}</b></span>
+          ))}
           {cam.settings.atmosphere && cam.atmosphere && cam.atmosphere.level !== 'clear' && (
             <span className={`chip air ${cam.atmosphere.level}`}>
               {cam.atmosphere.level === 'night' ? 'Night' : `${cam.atmosphere.kind === 'smog' ? 'Smog' : cam.atmosphere.level === 'hazy' ? 'Haze' : 'Fog'} · ${Math.round(cam.atmosphere.visibility ?? 0)}`}
@@ -301,6 +353,19 @@ export function ExpandedView({
               <p className="note">Helmet: {cam.ppe?.helmet_yes ?? 0} yes · {cam.ppe?.helmet_no ?? 0} no · {cam.ppe?.helmet_unknown ?? 0} unknown (not enough evidence)</p>
             )}
             {st.atmosphere && <AtmospherePanel cam={cam} />}
+            <label className="toggle" title="Pixelates faces (and the head of people whose face is not detected) before anything is streamed, saved or recorded.">
+              <input type="checkbox" checked={st.privacy ?? false} disabled={readOnly}
+                onChange={(e) => patch({ privacy: e.target.checked })} /> Privacy mode (blur faces)</label>
+            <label className="toggle" title="Alerts when the picture freezes, the lens is blocked, the image blurs or the camera is moved. Off by default for looping video files.">
+              <input type="checkbox" checked={st.health ?? cam.health?.enabled ?? false} disabled={readOnly}
+                onChange={(e) => patch({ health: e.target.checked })} /> Camera health &amp; tamper alerts</label>
+            {cam.health?.enabled && (
+              <p className={`note ${cam.health.state === 'ok' ? '' : 'err'}`}>
+                Health: <b>{cam.health.state === 'ok' ? 'OK' : cam.health.state}</b> · reconnects {cam.health.reconnects}
+                {cam.health.metrics?.sharpness !== undefined && <> · sharpness {cam.health.metrics.sharpness}</>}
+              </p>
+            )}
+            <CustomObjects cam={cam} st={st} readOnly={readOnly} patch={patch} />
             <h4>Zones &amp; lines</h4>
             <button className="ghost" onClick={onEditZones}><Pencil size={14} />{readOnly ? 'View' : 'Edit'} zones &amp; lines ({(cam.settings.zones?.length ?? 0) + (cam.settings.lines?.length ?? 0)})</button>
             {(cam.settings.zones ?? []).map((z) => (
@@ -407,7 +472,7 @@ export function AddCameraModal({ onClose, onAdded, onError }: { onClose: () => v
 /* --------------------------------------------------------------- sidebar */
 const EV_ICON: Record<string, string> = {
   new_track: '◆', camera_online: '●', camera_offline: '○', camera_error: '▲', line_cross: '⇅', zone_enter: '▣',
-  zone_exit: '▢', dwell: '◷', capacity: '⚑', fall: '⚠', ppe_violation: '⛑', visibility: '≋', visibility_clear: '☀',
+  zone_exit: '▢', dwell: '◷', capacity: '⚑', fall: '⚠', ppe_violation: '⛑', visibility: '≋', custom_detect: '◇', camera_tamper: '⚠', camera_tamper_clear: '✓', camera_reconnecting: '↻', visibility_clear: '☀',
 }
 
 export function EventFeed({ events }: { events: DetEvent[] }) {

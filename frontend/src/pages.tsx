@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Download, LayoutGrid, Plus, Search, Send } from 'lucide-react'
+import { Download, FileText, LayoutGrid, Plus, Search, Send } from 'lucide-react'
 import { api } from './api'
 import { Donut, LineChart } from './charts'
 import { AboutPanel, CameraTile, CAT_COLORS, EventFeed, StatusBadge, TotalsPanel } from './components'
@@ -145,7 +145,7 @@ export function AnalyticsPage({ cameras, summary }: { cameras: Camera[]; summary
 const TYPE_LABEL: Record<string, string> = {
   new_track: 'Detection', camera_online: 'Camera online', camera_offline: 'Camera offline', camera_error: 'Camera error',
   zone_enter: 'Zone entry', zone_exit: 'Zone exit', line_cross: 'Line crossed', dwell: 'Dwell time',
-  capacity: 'Over capacity', fall: 'Possible fall', ppe_violation: 'No helmet', visibility: 'Low visibility', visibility_clear: 'Visibility restored',
+  capacity: 'Over capacity', fall: 'Possible fall', ppe_violation: 'No helmet', visibility: 'Low visibility', custom_detect: 'Custom object', camera_tamper: 'Camera tampering', camera_tamper_clear: 'Camera healthy', camera_reconnecting: 'Reconnecting', visibility_clear: 'Visibility restored',
 }
 
 export function EventsPage({ events, cameras }: { events: DetEvent[]; cameras: Camera[] }) {
@@ -178,7 +178,8 @@ export function EventsPage({ events, cameras }: { events: DetEvent[]; cameras: C
           <option value="">All types</option>
           {Object.entries(TYPE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
-        <a className="primary" href="/api/report.csv"><Download size={15} />Export CSV</a>
+        <a className="ghost" href="/api/report.csv"><Download size={15} />Export CSV</a>
+        <a className="primary" href="/api/report.html?hours=24" target="_blank" rel="noreferrer"><FileText size={15} />Daily report</a>
       </div>
       <section className="panel">
         <div className="table-wrap tall">

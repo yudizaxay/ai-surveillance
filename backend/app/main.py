@@ -160,6 +160,10 @@ class SettingsPatch(BaseModel):
     pose: bool | None = None
     ppe: bool | None = None
     atmosphere: bool | None = None
+    custom: list[str] | None = None
+    health: bool | None = None
+    privacy: bool | None = None
+    custom_conf: float | None = None
     model: str | None = None
     name: str | None = None
     zones: list[dict] | None = None
@@ -431,6 +435,14 @@ def report_csv():
                      e["severity"], e["label"], e["track_id"], e["zone"], e["confidence"], e["message"]])
     return Response(buf.getvalue(), media_type="text/csv",
                     headers={"Content-Disposition": "attachment; filename=detection_report.csv"})
+
+
+@app.get("/api/report.html")
+def report_html(hours: int = 24):
+    from . import report
+    hours = min(max(hours, 1), 168)
+    html = report.build(db.events_since(time.time() - hours * 3600), hours, manager.snapshot())
+    return Response(html, media_type="text/html", headers={"Cache-Control": "no-store"})
 
 
 # Serve the built dashboard when present (Docker / production). Hash routing means no SPA fallback is needed.
