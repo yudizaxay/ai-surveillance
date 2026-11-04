@@ -107,6 +107,18 @@ git clone <this repo> && cd ai-surveillance
 
 Open **<http://localhost:5173>**, click **Add camera**, and choose a sample video, a webcam or a stream URL. Try the **Search** page after switching on *Searchable footage* for a camera, and the *Detect anything* box in a camera's detail panel.
 
+### Try a live stream
+
+No camera at hand? **Add camera → Stream** accepts any RTSP / HTTP URL. These public webcams were reachable when this README was written and are good for trying the pipeline (they are third-party streams, so they can go offline or change scene at any time):
+
+| Stream | URL | Scene |
+|---|---|---|
+| Lake, Slovakia (also good for the fog / visibility demo) | `rtsp://stream.strba.sk:1935/strba/VYHLAD_JAZERO.stream` | 1280×720 |
+| Observatory, South Africa (good for *Detect anything*: “telescope dome”) | `rtsp://196.21.92.82/axis-media/media.amp` | 1024×640 |
+| University plaza, San Diego | `rtsp://132.239.12.145/axis-media/media.amp` | 1280×800 |
+
+Test a URL outside the app with `ffprobe -rtsp_transport tcp "<url>"`. If it reports `403` or `401`, the stream needs access the server will not give; the app cannot work around that. For a stream that never goes offline, loop a local video through an RTSP server such as [MediaMTX](https://github.com/bluenviron/mediamtx) with `ffmpeg`.
+
 <details>
 <summary>Manual setup</summary>
 
